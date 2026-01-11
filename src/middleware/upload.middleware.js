@@ -103,7 +103,7 @@ const uploadProfileImage = uploadUserFiles.single('profile_image');
 const getFileUrl = (req, filename, type = 'profile') => {
   if (!filename) return null;
   
-  const baseUrl = "http://localhost:3000";
+  const baseUrl = "https://footman-backend.onrender.com";
   
   if (type === 'nid') {
     return `${baseUrl}/api/v1/uploads/nid/${filename}`;
