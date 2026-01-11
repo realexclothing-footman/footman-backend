@@ -1,0 +1,2461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FOOTMAN Admin Panel</title>
+    <style>
+        /* ========== CSS RESET & BASE ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+       
+        :root {
+            --primary: #4CAF50;
+            --primary-dark: #388E3C;
+            --secondary: #2196F3;
+            --secondary-dark: #1976D2;
+            --danger: #F44336;
+            --danger-dark: #D32F2F;
+            --warning: #FF9800;
+            --warning-dark: #F57C00;
+            --success: #4CAF50;
+            --success-dark: #388E3C;
+            --info: #00BCD4;
+            --info-dark: #0097A7;
+            --dark: #333;
+            --light: #f8f9fa;
+            --gray: #6c757d;
+            --gray-light: #e9ecef;
+            --border: #dee2e6;
+            --shadow: 0 2px 10px rgba(0,0,0,0.1);
+            --radius: 8px;
+            --transition: all 0.3s ease;
+        }
+       
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: var(--dark);
+            line-height: 1.6;
+        }
+       
+        /* ========== LAYOUT ========== */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+       
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+       
+        .header h1 {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 28px;
+            color: var(--dark);
+        }
+       
+        .logo {
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+       
+        /* ========== AUTH SECTION ========== */
+        .auth-section {
+            max-width: 400px;
+            margin: 100px auto;
+        }
+       
+        .auth-card {
+            background: white;
+            padding: 40px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+       
+        .auth-card h2 {
+            margin-bottom: 30px;
+            color: var(--dark);
+        }
+       
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+       
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--gray);
+            font-weight: 500;
+        }
+       
+        .input-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 16px;
+            transition: var(--transition);
+        }
+       
+        .input-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+       
+        /* ========== BUTTONS ========== */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+       
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+       
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+       
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+       
+        .btn-secondary:hover {
+            background: var(--secondary-dark);
+            transform: translateY(-1px);
+        }
+       
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+       
+        .btn-danger:hover {
+            background: var(--danger-dark);
+            transform: translateY(-1px);
+        }
+       
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+       
+        .btn-warning:hover {
+            background: var(--warning-dark);
+            transform: translateY(-1px);
+        }
+       
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+       
+        .btn-success:hover {
+            background: var(--success-dark);
+            transform: translateY(-1px);
+        }
+       
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+       
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+       
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+       
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+       
+        /* ========== MESSAGES ========== */
+        .message {
+            padding: 15px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+       
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+       
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+       
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+       
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+       
+        /* ========== STATS CARDS ========== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+       
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+        }
+       
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+       
+        .stat-card h3 {
+            color: var(--gray);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+       
+        .stat-card .number {
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+       
+        /* ========== TABS ========== */
+        .tabs-section {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+       
+        .tabs-header {
+            display: flex;
+            border-bottom: 2px solid var(--gray-light);
+            background: #f8f9fa;
+            padding: 0 20px;
+        }
+       
+        .tab-btn {
+            padding: 15px 25px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--gray);
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+       
+        .tab-btn:hover {
+            color: var(--dark);
+            background: var(--gray-light);
+        }
+       
+        .tab-btn.active {
+            color: var(--primary);
+        }
+       
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary);
+        }
+       
+        .tab-content {
+            display: none;
+            padding: 30px;
+        }
+       
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+       
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+       
+        /* ========== TABLE STYLES ========== */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+       
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+       
+        .section-title h2 {
+            font-size: 24px;
+            color: var(--dark);
+        }
+       
+        .filters {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+       
+        .table-container {
+            background: white;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+       
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+       
+        thead {
+            background: #f8f9fa;
+        }
+       
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--gray);
+            border-bottom: 2px solid var(--border);
+        }
+       
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: var(--transition);
+        }
+       
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+       
+        td {
+            padding: 15px;
+            vertical-align: middle;
+        }
+       
+        /* ========== STATUS BADGES ========== */
+        .badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+       
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+       
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+       
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+       
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+       
+        .badge-primary {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+       
+        .badge-online {
+            background: #d4edda;
+            color: #155724;
+            position: relative;
+            padding-left: 25px;
+        }
+       
+        .badge-online::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+       
+        .badge-offline {
+            background: #e9ecef;
+            color: #495057;
+            position: relative;
+            padding-left: 25px;
+        }
+       
+        .badge-offline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            background: #6c757d;
+            border-radius: 50%;
+        }
+       
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+       
+        /* ========== USER AVATAR ========== */
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+       
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+       
+        .user-name {
+            font-weight: 600;
+            color: var(--dark);
+        }
+       
+        .user-meta {
+            font-size: 12px;
+            color: var(--gray);
+        }
+       
+        /* ========== PAGINATION ========== */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 30px;
+        }
+       
+        .page-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+       
+        .page-btn:hover:not(.active):not(:disabled) {
+            background: var(--gray-light);
+        }
+       
+        .page-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+       
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+       
+        /* ========== LOADING STATES ========== */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray);
+        }
+       
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-left: 10px;
+            border: 2px solid var(--gray-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+       
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+       
+        /* ========== MODAL ========== */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+       
+        .modal-content {
+            background: white;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+       
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+       
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+       
+        .modal-body {
+            padding: 20px;
+        }
+       
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+       
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--gray);
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+       
+        .close-btn:hover {
+            background: var(--gray-light);
+        }
+       
+        /* ========== DETAILS CARD ========== */
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+       
+        .detail-card {
+            background: var(--gray-light);
+            padding: 15px;
+            border-radius: var(--radius);
+        }
+       
+        .detail-label {
+            font-size: 12px;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+       
+        .detail-value {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--dark);
+        }
+       
+        /* ========== PASSWORD FORM ========== */
+        .password-form {
+            background: white;
+            padding: 25px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+       
+        .password-form h3 {
+            margin-bottom: 20px;
+            color: var(--dark);
+        }
+       
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+       
+        /* ========== ONLINE STATUS INDICATOR ========== */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+       
+        .status-indicator.online {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+       
+        .status-indicator.offline {
+            background: #f5f5f5;
+            color: #757575;
+        }
+       
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+       
+        .status-dot.online {
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+       
+        .status-dot.offline {
+            background: #9e9e9e;
+        }
+       
+        /* ========== RESPONSIVE DESIGN ========== */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+           
+            .header {
+                padding: 15px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+           
+            .tabs-header {
+                flex-wrap: wrap;
+            }
+           
+            .tab-btn {
+                flex: 1;
+                min-width: 120px;
+                justify-content: center;
+            }
+           
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+           
+            table {
+                display: block;
+                overflow-x: auto;
+            }
+           
+            .modal-content {
+                width: 95%;
+                margin: 10px;
+            }
+        }
+       
+        /* ========== UTILITY CLASSES ========== */
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        .mt-1 { margin-top: 10px; }
+        .mt-2 { margin-top: 20px; }
+        .mt-3 { margin-top: 30px; }
+        .mb-1 { margin-bottom: 10px; }
+        .mb-2 { margin-bottom: 20px; }
+        .mb-3 { margin-bottom: 30px; }
+        .ml-auto { margin-left: auto; }
+        .d-none { display: none; }
+        .d-flex { display: flex; }
+        .d-block { display: block; }
+        .align-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-1 { gap: 10px; }
+        .gap-2 { gap: 20px; }
+        .gap-3 { gap: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>
+                <div class="logo">F</div>
+                FOOTMAN Admin Panel
+            </h1>
+            <div class="user-info d-none" id="userInfo">
+                <div class="d-flex align-center gap-2">
+                    <span>Admin</span>
+                    <button class="btn btn-outline btn-sm" onclick="Admin.logout()">
+                        <i>🚪</i> Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Auth Section -->
+        <section class="auth-section" id="authSection">
+            <div class="auth-card">
+                <h2>Admin Login</h2>
+                <div class="input-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="text" id="phone" class="input-control" placeholder="01700000000" value="01700000000">
+                </div>
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" class="input-control" placeholder="Enter password" value="admin123">
+                </div>
+                <button class="btn btn-primary btn-block" onclick="Admin.login()">
+                    <i>🔑</i> Login
+                </button>
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <main class="main-content d-none" id="mainContent">
+            <!-- Messages -->
+            <div class="message d-none" id="message"></div>
+
+            <!-- Dashboard Stats -->
+            <section class="stats-grid" id="statsGrid"></section>
+
+            <!-- Tabs Navigation -->
+            <section class="tabs-section">
+                <div class="tabs-header">
+                    <button class="tab-btn active" data-tab="pending">
+                        <i>⏳</i> Pending Partners
+                        <span class="badge badge-warning ml-auto" id="pendingCountBadge">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="partners">
+                        <i>👥</i> All Partners
+                        <span class="badge badge-primary ml-auto" id="partnersCountBadge">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="customers">
+                        <i>👤</i> Customers
+                        <span class="badge badge-success ml-auto" id="customersCountBadge">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="orders">
+                        <i>📦</i> Orders
+                        <span class="badge badge-info ml-auto" id="ordersCountBadge">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="online">
+                        <i>📍</i> Online Partners
+                        <span class="badge badge-success ml-auto" id="onlineCountBadge">0</span>
+                    </button>
+                </div>
+
+                <!-- Tab Contents -->
+                <div id="tabContents">
+                    <!-- Pending Partners Tab -->
+                    <div class="tab-content active" data-tab="pending">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <i>⏳</i>
+                                <h2>Pending Partner Approvals</h2>
+                            </div>
+                            <div class="filters">
+                                <input type="text" class="input-control" placeholder="Search..." id="pendingSearch">
+                                <button class="btn btn-secondary" onclick="Admin.loadPendingPartners()">
+                                    <i>🔄</i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="pendingTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Partner Info</th>
+                                        <th>Phone</th>
+                                        <th>Registered</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pendingTableBody"></tbody>
+                            </table>
+                            <div class="loading d-none" id="loadingPending">Loading...</div>
+                            <div class="text-center mt-2 mb-2" id="pendingEmpty" style="display: none;">
+                                No pending partners found
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All Partners Tab -->
+                    <div class="tab-content" data-tab="partners">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <i>👥</i>
+                                <h2>All Delivery Partners</h2>
+                            </div>
+                            <div class="filters">
+                                <input type="text" class="input-control" placeholder="Search..." id="partnersSearch">
+                                <select class="input-control" id="partnerStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="active">Active Only</option>
+                                    <option value="inactive">Inactive Only</option>
+                                    <option value="online">Online Only</option>
+                                    <option value="offline">Offline Only</option>
+                                </select>
+                                <button class="btn btn-secondary" onclick="Admin.loadPartners()">
+                                    <i>🔄</i> Refresh
+                                </button>
+                                <button class="btn btn-success" onclick="Admin.exportData('partners')">
+                                    <i>📥</i> Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="partnersTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Partner</th>
+                                        <th>Phone</th>
+                                        <th>Account Status</th>
+                                        <th>Online Status</th>
+                                        <th>Jobs</th>
+                                        <th>Rating</th>
+                                        <th>Last Active</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="partnersTableBody"></tbody>
+                            </table>
+                            <div class="loading d-none" id="loadingPartners">Loading...</div>
+                            <div class="text-center mt-2 mb-2" id="partnersEmpty" style="display: none;">
+                                No partners found
+                            </div>
+                        </div>
+                        <div class="pagination" id="partnersPagination"></div>
+                    </div>
+
+                    <!-- Customers Tab -->
+                    <div class="tab-content" data-tab="customers">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <i>👤</i>
+                                <h2>All Customers</h2>
+                            </div>
+                            <div class="filters">
+                                <input type="text" class="input-control" placeholder="Search..." id="customersSearch">
+                                <select class="input-control" id="customerStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="active">Active Only</option>
+                                    <option value="inactive">Inactive Only</option>
+                                </select>
+                                <button class="btn btn-secondary" onclick="Admin.loadCustomers()">
+                                    <i>🔄</i> Refresh
+                                </button>
+                                <button class="btn btn-success" onclick="Admin.exportData('customers')">
+                                    <i>📥</i> Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="customersTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Customer</th>
+                                        <th>Phone</th>
+                                        <th>Email</th>
+                                        <th>Status</th>
+                                        <th>Orders</th>
+                                        <th>Last Order</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customersTableBody"></tbody>
+                            </table>
+                            <div class="loading d-none" id="loadingCustomers">Loading...</div>
+                            <div class="text-center mt-2 mb-2" id="customersEmpty" style="display: none;">
+                                No customers found
+                            </div>
+                        </div>
+                        <div class="pagination" id="customersPagination"></div>
+                    </div>
+
+                    <!-- Orders Tab -->
+                    <div class="tab-content" data-tab="orders">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <i>📦</i>
+                                <h2>All Orders</h2>
+                            </div>
+                            <div class="filters">
+                                <input type="text" class="input-control" placeholder="Search..." id="ordersSearch">
+                                <select class="input-control" id="orderStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="accepted">Accepted</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                                <button class="btn btn-secondary" onclick="Admin.loadOrders()">
+                                    <i>🔄</i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="ordersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Order ID</th>
+                                        <th>Customer</th>
+                                        <th>Partner</th>
+                                        <th>Status</th>
+                                        <th>Amount</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ordersTableBody"></tbody>
+                            </table>
+                            <div class="loading d-none" id="loadingOrders">Loading...</div>
+                            <div class="text-center mt-2 mb-2" id="ordersEmpty" style="display: none;">
+                                No orders found
+                            </div>
+                        </div>
+                        <div class="pagination" id="ordersPagination"></div>
+                    </div>
+
+                    <!-- Online Partners Tab -->
+                    <div class="tab-content" data-tab="online">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <i>📍</i>
+                                <h2>Online Delivery Partners</h2>
+                                <span class="badge badge-success ml-2" id="onlineNowBadge">0 online now</span>
+                            </div>
+                            <div class="filters">
+                                <button class="btn btn-secondary" onclick="Admin.loadOnlinePartners()">
+                                    <i>🔄</i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="onlineTable">
+                                <thead>
+                                    <tr>
+                                        <th>Partner</th>
+                                        <th>Phone</th>
+                                        <th>Status</th>
+                                        <th>Location</th>
+                                        <th>Current Job</th>
+                                        <th>Rating</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="onlineTableBody"></tbody>
+                            </table>
+                            <div class="loading d-none" id="loadingOnline">Loading...</div>
+                            <div class="text-center mt-2 mb-2" id="onlineEmpty" style="display: none;">
+                                No partners are online currently
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- User Details Modal -->
+    <div class="modal" id="userModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">User Details</h2>
+                <button class="close-btn" onclick="Modal.close()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- Password Reset Modal -->
+    <div class="modal" id="passwordModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Reset Password</h2>
+                <button class="close-btn" onclick="Modal.closePassword()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="password-form">
+                    <h3 id="passwordUserTitle">Reset Password for User</h3>
+                    <div class="input-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" class="input-control" placeholder="Enter new password">
+                    </div>
+                    <div class="input-group">
+                        <label for="confirmPassword">Confirm Password</label>
+                        <input type="password" id="confirmPassword" class="input-control" placeholder="Confirm new password">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="Admin.resetPassword()">
+                            <i>🔒</i> Reset Password
+                        </button>
+                        <button class="btn btn-outline" onclick="Modal.closePassword()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== CONFIGURATION ==========
+        const Config = {
+            API_BASE: 'http://localhost:3000/api/v1',
+            ITEMS_PER_PAGE: 10,
+            DEFAULT_CREDENTIALS: {
+                phone: '01700000000',
+                password: 'admin123'
+            },
+            REFRESH_INTERVAL: 30000 // 30 seconds for auto-refresh online status
+        };
+
+        // ========== STATE MANAGEMENT ==========
+        const State = {
+            token: '',
+            currentUser: null,
+            currentTab: 'pending',
+            currentUserId: null,
+            currentUserType: null,
+            autoRefreshInterval: null,
+            data: {
+                pendingPartners: [],
+                partners: [],
+                customers: [],
+                orders: [],
+                onlinePartners: []
+            },
+            pagination: {
+                partners: { current: 1, total: 0, pages: 0 },
+                customers: { current: 1, total: 0, pages: 0 },
+                orders: { current: 1, total: 0, pages: 0 }
+            }
+        };
+
+        // ========== UTILITY FUNCTIONS ==========
+        const Utils = {
+            showMessage(text, type = 'success') {
+                const messageEl = document.getElementById('message');
+                messageEl.textContent = text;
+                messageEl.className = `message ${type}`;
+                messageEl.style.display = 'flex';
+               
+                setTimeout(() => {
+                    messageEl.style.display = 'none';
+                }, 5000);
+            },
+
+            formatDate(dateString) {
+                if (!dateString) return 'Never';
+                const date = new Date(dateString);
+                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            },
+
+            formatTimeAgo(dateString) {
+                if (!dateString) return 'Never';
+                const date = new Date(dateString);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                return `${diffDays}d ago`;
+            },
+
+            getInitials(name) {
+                if (!name) return 'U';
+                return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+            },
+
+            exportToCSV(data, filename) {
+                if (data.length === 0) {
+                    Utils.showMessage('No data to export', 'warning');
+                    return;
+                }
+
+                const headers = Object.keys(data[0]);
+                const csv = [
+                    headers.join(','),
+                    ...data.map(row => headers.map(header => {
+                        let cell = row[header];
+                        if (typeof cell === 'string' && cell.includes(',')) {
+                            cell = `"${cell}"`;
+                        }
+                        return cell;
+                    }).join(','))
+                ].join('\n');
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                Utils.showMessage(`Exported ${data.length} records to ${filename}`);
+            },
+
+            debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            },
+
+            generatePassword(length = 8) {
+                const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let password = '';
+                for (let i = 0; i < length; i++) {
+                    password += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return password;
+            }
+        };
+
+        // ========== MODAL MANAGER ==========
+        const Modal = {
+            open(title, body, footer) {
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = body;
+                document.getElementById('modalFooter').innerHTML = footer || '';
+                document.getElementById('userModal').style.display = 'flex';
+            },
+
+            close() {
+                document.getElementById('userModal').style.display = 'none';
+            },
+
+            openPassword(userId, userName, userType) {
+                State.currentUserId = userId;
+                State.currentUserType = userType;
+                document.getElementById('passwordUserTitle').textContent = `Reset Password for ${userName}`;
+                document.getElementById('newPassword').value = '';
+                document.getElementById('confirmPassword').value = '';
+                document.getElementById('passwordModal').style.display = 'flex';
+            },
+
+            closePassword() {
+                document.getElementById('passwordModal').style.display = 'none';
+            },
+
+            showUserDetails(user, type) {
+                const details = this.generateUserDetailsHTML(user, type);
+                const actions = this.generateUserActionsHTML(user, type);
+                this.open(`${type === 'customer' ? 'Customer' : 'Partner'} Details`, details, actions);
+            },
+
+            generateUserDetailsHTML(user, type) {
+                const isPartner = type !== 'customer';
+               
+                const commonDetails = `
+                    <div class="details-grid">
+                        <div class="detail-card">
+                            <div class="detail-label">Full Name</div>
+                            <div class="detail-value">${user.full_name || 'N/A'}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Phone</div>
+                            <div class="detail-value">${user.phone}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Email</div>
+                            <div class="detail-value">${user.email || 'Not provided'}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Account Status</div>
+                            <div class="detail-value">
+                                <span class="badge ${user.is_active ? 'badge-success' : 'badge-warning'}">
+                                    ${user.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Registered</div>
+                            <div class="detail-value">${Utils.formatDate(user.created_at)}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Last Login</div>
+                            <div class="detail-value">${Utils.formatTimeAgo(user.last_login_at)}</div>
+                        </div>
+                `;
+
+                if (isPartner) {
+                    const onlineStatus = user.is_online ? 'Online' : 'Offline';
+                    const onlineClass = user.is_online ? 'badge-online' : 'badge-offline';
+                    const lastActive = user.last_active_at ? Utils.formatTimeAgo(user.last_active_at) : 'Never';
+
+                    return commonDetails + `
+                        <div class="detail-card">
+                            <div class="detail-label">Online Status</div>
+                            <div class="detail-value">
+                                <span class="${onlineClass}">${onlineStatus}</span>
+                            </div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Last Active</div>
+                            <div class="detail-value">${lastActive}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">NID Number</div>
+                            <div class="detail-value">${user.nid_number || 'N/A'}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Emergency Contact</div>
+                            <div class="detail-value">
+                                ${user.emergency_contact_name || 'N/A'} (${user.emergency_contact_phone || 'N/A'})
+                            </div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Completed Jobs</div>
+                            <div class="detail-value">${user.total_completed_jobs || 0}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Rating</div>
+                            <div class="detail-value">⭐ ${user.rating || '5.0'}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Current Location</div>
+                            <div class="detail-value">${user.current_location || 'Not available'}</div>
+                        </div>
+                    </div>`;
+                }
+
+                // Customer details
+                return commonDetails + `
+                        <div class="detail-card">
+                            <div class="detail-label">Total Orders</div>
+                            <div class="detail-value">${user.total_orders || 0}</div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-label">Last Order</div>
+                            <div class="detail-value">${Utils.formatTimeAgo(user.last_order_at)}</div>
+                        </div>
+                    </div>`;
+            },
+
+            generateUserActionsHTML(user, type) {
+                const isPartner = type !== 'customer';
+                let actions = '';
+
+                // Password reset button for all users
+                actions += `
+                    <button class="btn btn-warning" onclick="Modal.openPassword(${user.id}, '${user.full_name || user.phone}', '${type}')">
+                        <i>🔒</i> Reset Password
+                    </button>
+                `;
+
+                // Status toggle button
+                if (user.is_active) {
+                    actions += `
+                        <button class="btn btn-danger" onclick="Admin.toggleUserStatus(${user.id}, false, '${type}')">
+                            <i>🚫</i> Deactivate
+                        </button>
+                    `;
+                } else {
+                    actions += `
+                        <button class="btn btn-success" onclick="Admin.toggleUserStatus(${user.id}, true, '${type}')">
+                            <i>✅</i> Activate
+                        </button>
+                    `;
+                }
+
+                // Partner specific actions
+                if (isPartner && !user.is_active) {
+                    actions += `
+                        <button class="btn btn-success" onclick="Admin.approveUser(${user.id})">
+                            ✅ Approve Partner
+                        </button>
+                    `;
+                }
+
+                // Message button
+                actions += `
+                    <button class="btn btn-secondary" onclick="Admin.sendMessage(${user.id})">
+                        <i>💬</i> Message
+                    </button>
+                    <button class="btn btn-outline" onclick="Modal.close()">
+                        Close
+                    </button>
+                `;
+
+                return actions;
+            }
+        };
+
+        // ========== API SERVICE ==========
+        const ApiService = {
+            async request(endpoint, options = {}) {
+                const url = `${Config.API_BASE}${endpoint}`;
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+
+                if (State.token) {
+                    headers['Authorization'] = `Bearer ${State.token}`;
+                }
+
+                try {
+                    const response = await fetch(url, {
+                        ...options,
+                        headers
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.message || `HTTP ${response.status}`);
+                    }
+
+                    return data;
+                } catch (error) {
+                    console.error('API Error:', error);
+                    Utils.showMessage(`Error: ${error.message}`, 'error');
+                    throw error;
+                }
+            },
+
+            // Auth
+            async login(phone, password) {
+                return this.request('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ phone, password })
+                });
+            },
+
+            // Users
+            async getUsers(userType, page = 1, limit = Config.ITEMS_PER_PAGE) {
+                return this.request(`/admin/users?user_type=${userType}&page=${page}&limit=${limit}`);
+            },
+
+            async getUserDetails(userId) {
+                return this.request(`/admin/users/${userId}`);
+            },
+
+            async updateUserStatus(userId, isActive) {
+                return this.request(`/admin/users/${userId}/status`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ is_active: isActive })
+                });
+            },
+
+            async resetUserPassword(userId, newPassword) {
+                return this.request(`/admin/users/${userId}/password`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ password: newPassword })
+                });
+            },
+
+            async getOnlinePartners() {
+                return this.request('/admin/partners/online');
+            },
+
+            async updatePartnerOnlineStatus(partnerId, isOnline) {
+                return this.request(`/admin/partners/${partnerId}/online-status`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ is_online: isOnline })
+                });
+            },
+
+            // Dashboard
+            async getDashboardStats() {
+                return this.request('/admin/dashboard');
+            },
+
+            // Orders
+            async getOrders(page = 1, limit = Config.ITEMS_PER_PAGE, status = '') {
+                let url = `/admin/orders?page=${page}&limit=${limit}`;
+                if (status) url += `&status=${status}`;
+                return this.request(url);
+            }
+        };
+
+        // ========== ADMIN MANAGER ==========
+        const Admin = {
+            // Authentication
+            async login() {
+                const phone = document.getElementById('phone').value;
+                const password = document.getElementById('password').value;
+
+                if (!phone || !password) {
+                    Utils.showMessage('Please enter phone and password', 'error');
+                    return;
+                }
+
+                try {
+                    const result = await ApiService.login(phone, password);
+                   
+                    if (result.success) {
+                        State.token = result.data.token;
+                        this.showAdminPanel();
+                        Utils.showMessage('Login successful!');
+                        this.loadDashboard();
+                        this.startAutoRefresh();
+                    }
+                } catch (error) {
+                    // Error already handled by ApiService
+                }
+            },
+
+            logout() {
+                State.token = '';
+                State.currentUser = null;
+                this.stopAutoRefresh();
+                document.getElementById('authSection').style.display = 'block';
+                document.getElementById('mainContent').style.display = 'none';
+                document.getElementById('userInfo').style.display = 'none';
+                Utils.showMessage('Logged out successfully');
+            },
+
+            showAdminPanel() {
+                document.getElementById('authSection').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                document.getElementById('userInfo').style.display = 'block';
+            },
+
+            // Auto Refresh for online status
+            startAutoRefresh() {
+                if (State.autoRefreshInterval) {
+                    clearInterval(State.autoRefreshInterval);
+                }
+               
+                State.autoRefreshInterval = setInterval(() => {
+                    if (State.currentTab === 'online') {
+                        this.loadOnlinePartners();
+                    }
+                    if (State.currentTab === 'partners') {
+                        this.loadPartners();
+                    }
+                }, Config.REFRESH_INTERVAL);
+            },
+
+            stopAutoRefresh() {
+                if (State.autoRefreshInterval) {
+                    clearInterval(State.autoRefreshInterval);
+                    State.autoRefreshInterval = null;
+                }
+            },
+
+            // Tab Management
+            switchTab(tabName) {
+                State.currentTab = tabName;
+
+                // Update active tab buttons
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tabName);
+                });
+
+                // Update active tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.toggle('active', content.dataset.tab === tabName);
+                });
+
+                // Load tab data
+                switch(tabName) {
+                    case 'pending':
+                        this.loadPendingPartners();
+                        break;
+                    case 'partners':
+                        this.loadPartners();
+                        break;
+                    case 'customers':
+                        this.loadCustomers();
+                        break;
+                    case 'orders':
+                        this.loadOrders();
+                        break;
+                    case 'online':
+                        this.loadOnlinePartners();
+                        break;
+                }
+            },
+
+            // Dashboard
+            async loadDashboard() {
+                try {
+                    const result = await ApiService.getDashboardStats();
+                   
+                    if (result.success) {
+                        const stats = result.data.stats;
+                        document.getElementById('statsGrid').innerHTML = `
+                            <div class="stat-card">
+                                <h3>Total Customers</h3>
+                                <div class="number">${stats.total_customers}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Total Partners</h3>
+                                <div class="number">${stats.total_delivery_boys}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Active Partners</h3>
+                                <div class="number">${stats.total_delivery_boys_active || 0}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Online Now</h3>
+                                <div class="number">${stats.online_partners || 0}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Total Orders</h3>
+                                <div class="number">${stats.total_orders}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Today's Orders</h3>
+                                <div class="number">${stats.today_orders}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Revenue</h3>
+                                <div class="number">৳${stats.estimated_revenue || 0}</div>
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    console.error('Dashboard load error:', error);
+                }
+            },
+
+            // Pending Partners
+            async loadPendingPartners() {
+                const loadingEl = document.getElementById('loadingPending');
+                const tableEl = document.getElementById('pendingTable');
+                const emptyEl = document.getElementById('pendingEmpty');
+                const tbody = document.getElementById('pendingTableBody');
+
+                loadingEl.style.display = 'block';
+                tableEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+
+                try {
+                    const result = await ApiService.getUsers('delivery');
+                   
+                    if (result.success) {
+                        const pendingPartners = result.data.users.filter(user => !user.is_active);
+                        State.data.pendingPartners = pendingPartners;
+
+                        this.renderPendingPartners(pendingPartners);
+                        this.updateBadge('pending', pendingPartners.length);
+                    }
+                } catch (error) {
+                    emptyEl.textContent = 'Error loading pending partners';
+                    emptyEl.style.display = 'block';
+                } finally {
+                    loadingEl.style.display = 'none';
+                }
+            },
+
+            renderPendingPartners(partners) {
+                const tbody = document.getElementById('pendingTableBody');
+                const tableEl = document.getElementById('pendingTable');
+                const emptyEl = document.getElementById('pendingEmpty');
+
+                if (partners.length === 0) {
+                    tableEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                tableEl.style.display = 'table';
+                emptyEl.style.display = 'none';
+
+                tbody.innerHTML = partners.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>
+                            <div class="d-flex align-center gap-2">
+                                <div class="user-avatar">${Utils.getInitials(user.full_name)}</div>
+                                <div class="user-info">
+                                    <div class="user-name">${user.full_name}</div>
+                                    <div class="user-meta">${user.nid_number || 'No NID'}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${user.phone}</td>
+                        <td>${Utils.formatDate(user.created_at)}</td>
+                        <td>
+                            <span class="badge badge-warning">Pending Approval</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="Admin.viewUser(${user.id}, 'partner')">
+                                Review
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            // All Partners
+            async loadPartners(page = 1) {
+                const loadingEl = document.getElementById('loadingPartners');
+                const tableEl = document.getElementById('partnersTable');
+                const emptyEl = document.getElementById('partnersEmpty');
+                const tbody = document.getElementById('partnersTableBody');
+                const statusFilter = document.getElementById('partnerStatusFilter').value;
+
+                loadingEl.style.display = 'block';
+                tableEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+
+                try {
+                    const result = await ApiService.getUsers('delivery', page);
+                   
+                    if (result.success) {
+                        let filteredPartners = result.data.users;
+                       
+                        // Apply filters
+                        if (statusFilter === 'active') {
+                            filteredPartners = filteredPartners.filter(p => p.is_active);
+                        } else if (statusFilter === 'inactive') {
+                            filteredPartners = filteredPartners.filter(p => !p.is_active);
+                        } else if (statusFilter === 'online') {
+                            filteredPartners = filteredPartners.filter(p => p.is_online);
+                        } else if (statusFilter === 'offline') {
+                            filteredPartners = filteredPartners.filter(p => !p.is_online);
+                        }
+
+                        State.data.partners = filteredPartners;
+                        State.pagination.partners = result.data.pagination;
+
+                        this.renderPartners(filteredPartners);
+                        this.updateBadge('partners', result.data.pagination.total);
+                        this.renderPagination('partners', result.data.pagination, page);
+                    }
+                } catch (error) {
+                    emptyEl.textContent = 'Error loading partners';
+                    emptyEl.style.display = 'block';
+                } finally {
+                    loadingEl.style.display = 'none';
+                }
+            },
+
+            renderPartners(partners) {
+                const tbody = document.getElementById('partnersTableBody');
+                const tableEl = document.getElementById('partnersTable');
+                const emptyEl = document.getElementById('partnersEmpty');
+
+                if (partners.length === 0) {
+                    tableEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                tableEl.style.display = 'table';
+                emptyEl.style.display = 'none';
+
+                tbody.innerHTML = partners.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>
+                            <div class="d-flex align-center gap-2">
+                                <div class="user-avatar">${Utils.getInitials(user.full_name)}</div>
+                                <div class="user-info">
+                                    <div class="user-name">${user.full_name}</div>
+                                    <div class="user-meta">${user.email || 'No email'}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${user.phone}</td>
+                        <td>
+                            <span class="badge ${user.is_active ? 'badge-success' : 'badge-warning'}">
+                                ${user.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="${user.is_online ? 'badge-online' : 'badge-offline'}">
+                                ${user.is_online ? 'Online' : 'Offline'}
+                            </span>
+                        </td>
+                        <td>${user.total_completed_jobs || 0}</td>
+                        <td>⭐ ${user.rating || '5.0'}</td>
+                        <td>${Utils.formatTimeAgo(user.last_active_at)}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-primary btn-sm" onclick="Admin.viewUser(${user.id}, 'partner')">
+                                    View
+                                </button>
+                                ${!user.is_active ?
+                                    `<button class="btn btn-success btn-sm" onclick="Admin.approveUser(${user.id})">
+                                        Approve
+                                    </button>` :
+                                    `<button class="btn btn-warning btn-sm" onclick="Admin.toggleUserStatus(${user.id}, false, 'partner')">
+                                        Deactivate
+                                    </button>`
+                                }
+                                ${user.is_online ?
+                                    `<button class="btn btn-danger btn-sm" onclick="Admin.toggleOnlineStatus(${user.id}, false)">
+                                        Go Offline
+                                    </button>` :
+                                    `<button class="btn btn-success btn-sm" onclick="Admin.toggleOnlineStatus(${user.id}, true)">
+                                        Go Online
+                                    </button>`
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            // Customers
+            async loadCustomers(page = 1) {
+                const loadingEl = document.getElementById('loadingCustomers');
+                const tableEl = document.getElementById('customersTable');
+                const emptyEl = document.getElementById('customersEmpty');
+                const tbody = document.getElementById('customersTableBody');
+                const statusFilter = document.getElementById('customerStatusFilter').value;
+
+                loadingEl.style.display = 'block';
+                tableEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+
+                try {
+                    const result = await ApiService.getUsers('customer', page);
+                   
+                    if (result.success) {
+                        let filteredCustomers = result.data.users;
+                       
+                        // Apply filters
+                        if (statusFilter === 'active') {
+                            filteredCustomers = filteredCustomers.filter(c => c.is_active);
+                        } else if (statusFilter === 'inactive') {
+                            filteredCustomers = filteredCustomers.filter(c => !c.is_active);
+                        }
+
+                        State.data.customers = filteredCustomers;
+                        State.pagination.customers = result.data.pagination;
+
+                        this.renderCustomers(filteredCustomers);
+                        this.updateBadge('customers', result.data.pagination.total);
+                        this.renderPagination('customers', result.data.pagination, page);
+                    }
+                } catch (error) {
+                    emptyEl.textContent = 'Error loading customers';
+                    emptyEl.style.display = 'block';
+                } finally {
+                    loadingEl.style.display = 'none';
+                }
+            },
+
+            renderCustomers(customers) {
+                const tbody = document.getElementById('customersTableBody');
+                const tableEl = document.getElementById('customersTable');
+                const emptyEl = document.getElementById('customersEmpty');
+
+                if (customers.length === 0) {
+                    tableEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                tableEl.style.display = 'table';
+                emptyEl.style.display = 'none';
+
+                tbody.innerHTML = customers.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>
+                            <div class="d-flex align-center gap-2">
+                                <div class="user-avatar">${Utils.getInitials(user.full_name)}</div>
+                                <div class="user-info">
+                                    <div class="user-name">${user.full_name || 'Unknown'}</div>
+                                    <div class="user-meta">Customer</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${user.phone}</td>
+                        <td>${user.email || 'No email'}</td>
+                        <td>
+                            <span class="badge ${user.is_active ? 'badge-success' : 'badge-warning'}">
+                                ${user.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td>${user.total_orders || 0}</td>
+                        <td>${Utils.formatTimeAgo(user.last_order_at)}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-primary btn-sm" onclick="Admin.viewUser(${user.id}, 'customer')">
+                                    View
+                                </button>
+                                ${user.is_active ?
+                                    `<button class="btn btn-danger btn-sm" onclick="Admin.toggleUserStatus(${user.id}, false, 'customer')">
+                                        Deactivate
+                                    </button>` :
+                                    `<button class="btn btn-success btn-sm" onclick="Admin.toggleUserStatus(${user.id}, true, 'customer')">
+                                        Activate
+                                    </button>`
+                                }
+                                <button class="btn btn-warning btn-sm" onclick="Modal.openPassword(${user.id}, '${user.full_name || user.phone}', 'customer')">
+                                    <i>🔒</i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            // Online Partners
+            async loadOnlinePartners() {
+                const loadingEl = document.getElementById('loadingOnline');
+                const tableEl = document.getElementById('onlineTable');
+                const emptyEl = document.getElementById('onlineEmpty');
+                const tbody = document.getElementById('onlineTableBody');
+
+                loadingEl.style.display = 'block';
+                tableEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+
+                try {
+                    const result = await ApiService.getOnlinePartners();
+                   
+                    if (result.success) {
+                        const onlinePartners = result.data.online_partners || [];
+                        State.data.onlinePartners = onlinePartners;
+
+                        this.renderOnlinePartners(onlinePartners);
+                        this.updateBadge('online', onlinePartners.length);
+                        document.getElementById('onlineNowBadge').textContent = `${onlinePartners.length} online now`;
+                    }
+                } catch (error) {
+                    emptyEl.textContent = 'Error loading online partners';
+                    emptyEl.style.display = 'block';
+                } finally {
+                    loadingEl.style.display = 'none';
+                }
+            },
+
+            renderOnlinePartners(partners) {
+                const tbody = document.getElementById('onlineTableBody');
+                const tableEl = document.getElementById('onlineTable');
+                const emptyEl = document.getElementById('onlineEmpty');
+
+                if (partners.length === 0) {
+                    tableEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                tableEl.style.display = 'table';
+                emptyEl.style.display = 'none';
+
+                tbody.innerHTML = partners.map(user => `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-center gap-2">
+                                <div class="user-avatar">${Utils.getInitials(user.full_name)}</div>
+                                <div class="user-info">
+                                    <div class="user-name">${user.full_name}</div>
+                                    <div class="user-meta">${user.phone}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${user.phone}</td>
+                        <td>
+                            <div class="status-indicator online">
+                                <span class="status-dot online"></span>
+                                Online
+                            </div>
+                        </td>
+                        <td>
+                            <div class="user-meta">
+                                ${user.current_location || 'Location not shared'}
+                                ${user.current_location ? `<br><small>${Utils.formatTimeAgo(user.last_location_update)}</small>` : ''}
+                            </div>
+                        </td>
+                        <td>
+                            ${user.current_job ?
+                                `<span class="badge badge-primary">On Delivery</span>` :
+                                `<span class="badge badge-success">Available</span>`
+                            }
+                        </td>
+                        <td>⭐ ${user.rating || '5.0'}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-primary btn-sm" onclick="Admin.viewUser(${user.id}, 'partner')">
+                                    View
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="Admin.toggleOnlineStatus(${user.id}, false)">
+                                    Force Offline
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            // Orders
+            async loadOrders(page = 1) {
+                const loadingEl = document.getElementById('loadingOrders');
+                const tableEl = document.getElementById('ordersTable');
+                const emptyEl = document.getElementById('ordersEmpty');
+                const tbody = document.getElementById('ordersTableBody');
+                const statusFilter = document.getElementById('orderStatusFilter').value;
+
+                loadingEl.style.display = 'block';
+                tableEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+
+                try {
+                    const result = await ApiService.getOrders(page, Config.ITEMS_PER_PAGE, statusFilter);
+                   
+                    if (result.success) {
+                        State.data.orders = result.data.orders;
+                        State.pagination.orders = result.data.pagination;
+
+                        this.renderOrders(result.data.orders);
+                        this.updateBadge('orders', result.data.pagination.total);
+                        this.renderPagination('orders', result.data.pagination, page);
+                    }
+                } catch (error) {
+                    emptyEl.textContent = 'Error loading orders';
+                    emptyEl.style.display = 'block';
+                } finally {
+                    loadingEl.style.display = 'none';
+                }
+            },
+
+            renderOrders(orders) {
+                const tbody = document.getElementById('ordersTableBody');
+                const tableEl = document.getElementById('ordersTable');
+                const emptyEl = document.getElementById('ordersEmpty');
+
+                if (orders.length === 0) {
+                    tableEl.style.display = 'none';
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                tableEl.style.display = 'table';
+                emptyEl.style.display = 'none';
+
+                tbody.innerHTML = orders.map(order => `
+                    <tr>
+                        <td>#${order.id}</td>
+                        <td>${order.customer?.full_name || 'Unknown'}</td>
+                        <td>${order.delivery_boy?.full_name || 'Not assigned'}</td>
+                        <td>
+                            <span class="badge ${this.getOrderStatusBadge(order.order_status)}">
+                                ${order.order_status}
+                            </span>
+                        </td>
+                        <td>৳${order.total_price || 0}</td>
+                        <td>${Utils.formatDate(order.created_at)}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="Admin.viewOrder(${order.id})">
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+
+            getOrderStatusBadge(status) {
+                const badges = {
+                    'pending': 'badge-warning',
+                    'accepted': 'badge-primary',
+                    'completed': 'badge-success',
+                    'cancelled': 'badge-danger'
+                };
+                return badges[status] || 'badge-info';
+            },
+
+            // User Management
+            async approveUser(userId) {
+                if (!confirm('Approve this partner? They will be able to login and accept deliveries.')) {
+                    return;
+                }
+
+                try {
+                    await ApiService.updateUserStatus(userId, true);
+                    Utils.showMessage('Partner approved successfully!');
+                    Modal.close();
+                    this.loadPendingPartners();
+                    this.loadPartners();
+                    this.loadDashboard();
+                } catch (error) {
+                    // Error already handled by ApiService
+                }
+            },
+
+            async toggleUserStatus(userId, isActive, userType) {
+                const action = isActive ? 'activate' : 'deactivate';
+                const userTypeText = userType === 'customer' ? 'customer' : 'partner';
+               
+                if (!confirm(`Are you sure you want to ${action} this ${userTypeText}?`)) {
+                    return;
+                }
+
+                try {
+                    await ApiService.updateUserStatus(userId, isActive);
+                    Utils.showMessage(`${userTypeText.charAt(0).toUpperCase() + userTypeText.slice(1)} ${action}d successfully`);
+                   
+                    if (Modal.isOpen) {
+                        Modal.close();
+                    }
+                   
+                    // Refresh appropriate tabs
+                    if (userType === 'customer') {
+                        this.loadCustomers();
+                    } else {
+                        this.loadPendingPartners();
+                        this.loadPartners();
+                        this.loadOnlinePartners();
+                    }
+                   
+                    this.loadDashboard();
+                } catch (error) {
+                    // Error already handled by ApiService
+                }
+            },
+
+            async toggleOnlineStatus(partnerId, isOnline) {
+                const action = isOnline ? 'online' : 'offline';
+                if (!confirm(`Force this partner to go ${action}?`)) {
+                    return;
+                }
+
+                try {
+                    await ApiService.updatePartnerOnlineStatus(partnerId, isOnline);
+                    Utils.showMessage(`Partner marked as ${action}`);
+                    this.loadPartners();
+                    this.loadOnlinePartners();
+                    this.loadDashboard();
+                } catch (error) {
+                    // Error already handled by ApiService
+                }
+            },
+
+            async resetPassword() {
+                const newPassword = document.getElementById('newPassword').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+
+                if (!newPassword || !confirmPassword) {
+                    Utils.showMessage('Please enter both password fields', 'error');
+                    return;
+                }
+
+                if (newPassword !== confirmPassword) {
+                    Utils.showMessage('Passwords do not match', 'error');
+                    return;
+                }
+
+                if (newPassword.length < 6) {
+                    Utils.showMessage('Password must be at least 6 characters', 'error');
+                    return;
+                }
+
+                try {
+                    await ApiService.resetUserPassword(State.currentUserId, newPassword);
+                    Utils.showMessage('Password reset successfully!');
+                    Modal.closePassword();
+                   
+                    // Send notification to user
+                    this.sendMessage(State.currentUserId, `Your password has been reset. New password: ${newPassword}`);
+                } catch (error) {
+                    // Error already handled by ApiService
+                }
+            },
+
+            viewUser(userId, type) {
+                const users = type === 'customer' ? State.data.customers :
+                            [...State.data.partners, ...State.data.pendingPartners, ...State.data.onlinePartners];
+               
+                const user = users.find(u => u.id === userId);
+               
+                if (user) {
+                    Modal.showUserDetails(user, type);
+                } else {
+                    // If not found in current data, fetch from API
+                    this.fetchUserDetails(userId, type);
+                }
+            },
+
+            async fetchUserDetails(userId, type) {
+                try {
+                    const result = await ApiService.getUserDetails(userId);
+                    if (result.success) {
+                        Modal.showUserDetails(result.data.user, type);
+                    }
+                } catch (error) {
+                    Utils.showMessage('Error loading user details', 'error');
+                }
+            },
+
+            viewOrder(orderId) {
+                const order = State.data.orders.find(o => o.id === orderId);
+                if (order) {
+                    Modal.open(
+                        `Order #${order.id}`,
+                        `
+                            <div class="details-grid">
+                                <div class="detail-card">
+                                    <div class="detail-label">Customer</div>
+                                    <div class="detail-value">${order.customer?.full_name || 'Unknown'}</div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Delivery Partner</div>
+                                    <div class="detail-value">${order.delivery_boy?.full_name || 'Not assigned'}</div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Status</div>
+                                    <div class="detail-value">
+                                        <span class="badge ${this.getOrderStatusBadge(order.order_status)}">
+                                            ${order.order_status}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Total Amount</div>
+                                    <div class="detail-value">৳${order.total_price || 0}</div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Footman Earnings</div>
+                                    <div class="detail-value">৳${order.footman_earnings || 0}</div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Distance</div>
+                                    <div class="detail-value">${order.distance_km || 0} KM</div>
+                                </div>
+                                <div class="detail-card">
+                                    <div class="detail-label">Created</div>
+                                    <div class="detail-value">${Utils.formatDate(order.created_at)}</div>
+                                </div>
+                            </div>
+                        `,
+                        `
+                            <button class="btn btn-outline" onclick="Modal.close()">
+                                Close
+                            </button>
+                        `
+                    );
+                }
+            },
+
+            sendMessage(userId, customMessage = null) {
+                let message = customMessage;
+                if (!message) {
+                    message = prompt('Enter message to send:');
+                }
+               
+                if (message) {
+                    // In production, implement SMS/notification API here
+                    Utils.showMessage(`Message sent to user ${userId}`);
+                    console.log(`Message to ${userId}: ${message}`);
+                }
+            },
+
+            // Export
+            exportData(type) {
+                let data = [];
+                let filename = '';
+
+                switch(type) {
+                    case 'partners':
+                        data = State.data.partners.map(p => ({
+                            ID: p.id,
+                            Name: p.full_name,
+                            Phone: p.phone,
+                            Email: p.email || '',
+                            'Account Status': p.is_active ? 'Active' : 'Inactive',
+                            'Online Status': p.is_online ? 'Online' : 'Offline',
+                            'Last Active': Utils.formatTimeAgo(p.last_active_at),
+                            'Completed Jobs': p.total_completed_jobs || 0,
+                            Rating: p.rating || '5.0',
+                            'Registered Date': Utils.formatDate(p.created_at)
+                        }));
+                        filename = 'footman_partners.csv';
+                        break;
+
+                    case 'customers':
+                        data = State.data.customers.map(c => ({
+                            ID: c.id,
+                            Name: c.full_name || 'Unknown',
+                            Phone: c.phone,
+                            Email: c.email || '',
+                            Status: c.is_active ? 'Active' : 'Inactive',
+                            'Total Orders': c.total_orders || 0,
+                            'Last Order': Utils.formatTimeAgo(c.last_order_at),
+                            'Registered Date': Utils.formatDate(c.created_at)
+                        }));
+                        filename = 'footman_customers.csv';
+                        break;
+                }
+
+                Utils.exportToCSV(data, filename);
+            },
+
+            // Pagination
+            renderPagination(type, pagination, currentPage) {
+                const paginationEl = document.getElementById(`${type}Pagination`);
+               
+                if (pagination.pages <= 1) {
+                    paginationEl.innerHTML = '';
+                    return;
+                }
+
+                let html = '';
+               
+                // Previous button
+                if (currentPage > 1) {
+                    html += `<button class="page-btn" onclick="Admin.load${type.charAt(0).toUpperCase() + type.slice(1)}(${currentPage - 1})">←</button>`;
+                }
+
+                // Page numbers
+                const maxPages = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+                let endPage = Math.min(pagination.pages, startPage + maxPages - 1);
+
+                if (endPage - startPage + 1 < maxPages) {
+                    startPage = Math.max(1, endPage - maxPages + 1);
+                }
+
+                for (let i = startPage; i <= endPage; i++) {
+                    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}"
+                              onclick="Admin.load${type.charAt(0).toUpperCase() + type.slice(1)}(${i})">
+                              ${i}
+                             </button>`;
+                }
+
+                // Next button
+                if (currentPage < pagination.pages) {
+                    html += `<button class="page-btn" onclick="Admin.load${type.charAt(0).toUpperCase() + type.slice(1)}(${currentPage + 1})">→</button>`;
+                }
+
+                paginationEl.innerHTML = html;
+            },
+
+            // UI Helpers
+            updateBadge(type, count) {
+                const badgeEl = document.getElementById(`${type}CountBadge`);
+                if (badgeEl) {
+                    badgeEl.textContent = count;
+                }
+            },
+
+            generateRandomPassword() {
+                const password = Utils.generatePassword(8);
+                document.getElementById('newPassword').value = password;
+                document.getElementById('confirmPassword').value = password;
+            }
+        };
+
+        // ========== SEARCH FUNCTIONALITY ==========
+        const Search = {
+            init() {
+                // Pending partners search
+                const pendingSearch = document.getElementById('pendingSearch');
+                if (pendingSearch) {
+                    pendingSearch.addEventListener('input', Utils.debounce(() => {
+                        this.filterTable('pendingTableBody', pendingSearch.value);
+                    }, 300));
+                }
+
+                // Partners search
+                const partnersSearch = document.getElementById('partnersSearch');
+                if (partnersSearch) {
+                    partnersSearch.addEventListener('input', Utils.debounce(() => {
+                        this.filterTable('partnersTableBody', partnersSearch.value);
+                    }, 300));
+                }
+
+                // Customers search
+                const customersSearch = document.getElementById('customersSearch');
+                if (customersSearch) {
+                    customersSearch.addEventListener('input', Utils.debounce(() => {
+                        this.filterTable('customersTableBody', customersSearch.value);
+                    }, 300));
+                }
+
+                // Orders search
+                const ordersSearch = document.getElementById('ordersSearch');
+                if (ordersSearch) {
+                    ordersSearch.addEventListener('input', Utils.debounce(() => {
+                        this.filterTable('ordersTableBody', ordersSearch.value);
+                    }, 300));
+                }
+            },
+
+            filterTable(tableBodyId, searchTerm) {
+                const rows = document.querySelectorAll(`#${tableBodyId} tr`);
+                const search = searchTerm.toLowerCase().trim();
+
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(search)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            }
+        };
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tab switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    Admin.switchTab(btn.dataset.tab);
+                });
+            });
+
+            // Initialize search
+            Search.init();
+
+            // Set default credentials for testing
+            setTimeout(() => {
+                document.getElementById('phone').value = Config.DEFAULT_CREDENTIALS.phone;
+                document.getElementById('password').value = Config.DEFAULT_CREDENTIALS.password;
+            }, 100);
+
+            // Add enter key support for login
+            document.getElementById('password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    Admin.login();
+                }
+            });
+
+            // Add generate password button to password modal
+            const passwordModalBody = document.querySelector('#passwordModal .modal-body');
+            if (passwordModalBody) {
+                const generateBtn = document.createElement('button');
+                generateBtn.className = 'btn btn-secondary btn-sm mt-1';
+                generateBtn.innerHTML = '<i>🎲</i> Generate Random Password';
+                generateBtn.onclick = Admin.generateRandomPassword;
+                passwordModalBody.querySelector('.form-actions').insertBefore(generateBtn, passwordModalBody.querySelector('.form-actions').firstChild);
+            }
+        });
+
+        // ========== GLOBAL EXPORTS ==========
+        window.Admin = Admin;
+        window.Modal = Modal;
+        window.Utils = Utils;
+    </script>
+</body>
+</html>

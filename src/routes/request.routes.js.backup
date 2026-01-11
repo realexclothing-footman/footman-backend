@@ -1,0 +1,47 @@
+const express = require('express');
+const router = express.Router();
+const requestController = require('../controllers/request.controller');
+const footmanController = require('../controllers/footman.controller');
+const authMiddleware = require('../middleware/auth.middleware');
+
+// ==================== CUSTOMER ROUTES ====================
+
+// Create help request (simple - just location)
+router.post('/help', authMiddleware, requestController.createRequest);
+
+// Get my requests
+router.get('/my', authMiddleware, requestController.getMyRequests);
+
+// Get request details
+router.get('/:id', authMiddleware, requestController.getRequestDetails);
+
+// Cancel request
+router.put('/:id/cancel', authMiddleware, requestController.cancelRequest);
+
+// Get nearby Footmen for map
+router.get('/nearby/footmen', authMiddleware, requestController.getNearbyFootmen);
+
+// ==================== FOOTMAN ROUTES ====================
+
+// Get available requests (within 1KM)
+router.get('/available/requests', authMiddleware, footmanController.getAvailableRequests);
+
+// Accept request
+router.post('/:id/accept', authMiddleware, footmanController.acceptRequest);
+
+// Reject request
+router.post('/:id/reject', authMiddleware, footmanController.rejectRequest);
+
+// Get Footman's active requests
+router.get('/footman/active', authMiddleware, footmanController.getMyActiveRequests);
+
+// Update request status
+router.put('/:id/status', authMiddleware, footmanController.updateRequestStatus);
+
+// Get Footman earnings
+router.get('/footman/earnings', authMiddleware, footmanController.getFootmanEarnings);
+
+// NEW: Cleanup old rejections (admin only - can be called via cron)
+router.delete('/cleanup/rejections', authMiddleware, footmanController.cleanupOldRejections);
+
+module.exports = router;

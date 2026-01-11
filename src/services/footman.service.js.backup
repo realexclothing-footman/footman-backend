@@ -1,0 +1,86 @@
+/**
+ * FOOTMAN Core Service
+ * Handles the complete Footman logic
+ */
+
+const PricingService = require('./pricing.service');
+const MatchingService = require('./matching.service');
+const CommissionService = require('./commission.service');
+
+class FootmanService {
+    /**
+     * Create a help request
+     */
+    static async createHelpRequest(userId, userLat, userLng) {
+        // 1. Find nearby Footmen
+        const nearbyFootmen = await MatchingService.findNearbyFootmen(
+            userLat, userLng, 3, 5
+        );
+
+        if (nearbyFootmen.count === 0) {
+            throw new Error('No Footmen available within 3KM');
+        }
+
+        // 2. Get nearest Footman
+        const nearestFootman = nearbyFootmen.footmen[0];
+        const distance = parseFloat(nearestFootman.distance_km);
+
+        // 3. Calculate fixed price
+        const price = PricingService.calculatePrice(distance);
+
+        // 4. Prepare commission breakdown
+        const commission = CommissionService.calculateCommission(price.basePrice);
+
+        return {
+            success: true,
+            request: {
+                customer_id: userId,
+                nearest_footman_id: nearestFootman.id,
+                distance_km: distance,
+                price_breakdown: price,
+                commission_breakdown: commission
+            },
+            footman: nearestFootman,
+            message: this._getPriceMessage(distance, price.basePrice)
+        };
+    }
+
+    static _getPriceMessage(distance, price) {
+        if (distance <= 1.5) {
+            return `Help within ${distance.toFixed(2)}KM - Fixed price: ৳${price}`;
+        } else {
+            return `Help within ${distance.toFixed(2)}KM - Fixed price: ৳${price}`;
+        }
+    }
+
+    /**
+     * Get nearby online Footmen for map display
+     */
+    static async getNearbyFootmenForMap(userLat, userLng, radiusKm = 3) {
+        const footmen = await MatchingService.findNearbyFootmen(
+            userLat, userLng, radiusKm, 20
+        );
+
+        // Format for map markers
+        const mapFootmen = footmen.footmen.map(f => ({
+            id: f.id,
+            name: f.full_name,
+            position: {
+                lat: parseFloat(f.latitude),
+                lng: parseFloat(f.longitude)
+            },
+            distance: f.distance_km,
+            online: true,
+            icon: 'human' // For Uber-like human icons
+        }));
+
+        return {
+            user_position: { lat: userLat, lng: userLng },
+            service_radius: radiusKm,
+            footmen: mapFootmen,
+            count: mapFootmen.length
+        };
+    }
+}
+
+module.exports = FootmanService;

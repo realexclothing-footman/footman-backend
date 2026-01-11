@@ -1,0 +1,449 @@
+const Request = require('../models/Request');
+const User = require('../models/User');
+const { Sequelize } = require('sequelize');
+const sequelize = require('../config/database');
+
+// ==================== FOOTMAN (PARTNER) CONTROLLERS ====================
+
+/**
+ * 1. GET AVAILABLE REQUESTS (within 1KM)
+ */
+exports.getAvailableRequests = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access this'
+      });
+    }
+
+    if (!user.is_online) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must be online to see requests'
+      });
+    }
+
+    // Get requests in 'searching' status
+    const requests = await Request.findAll({
+      where: {
+        request_status: 'searching',
+        assigned_footman_id: null
+      },
+      include: [
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ],
+      order: [['created_at', 'ASC']]
+    });
+
+    // Filter by distance (within 1KM of Footman)
+    const nearbyRequests = requests.filter(request => {
+      if (!user.latitude || !user.longitude || !request.pickup_lat || !request.pickup_lng) {
+        return false;
+      }
+      
+      // Calculate distance
+      const distance = this._calculateDistance(
+        user.latitude, user.longitude,
+        request.pickup_lat, request.pickup_lng
+      );
+      
+      request.distance_km = distance;
+      return distance <= 1; // MAX 1KM RADIUS
+    });
+
+    // Sort by nearest first
+    nearbyRequests.sort((a, b) => a.distance_km - b.distance_km);
+
+    // Format response with CORRECT PRICING LOGIC
+    const formattedRequests = nearbyRequests.map(request => {
+      const reqData = request.toJSON();
+      
+      // CORRECT PRICING: 0-0.5KM = ৳50, 0.5-1KM = ৳100
+      const distance = request.distance_km;
+      const isWithin500Meters = distance <= 0.5;
+      const price = isWithin500Meters ? 50 : 100;
+      const priceDisplay = isWithin500Meters ? '৳50' : '৳100';
+      const priceTier = isWithin500Meters ? '0.5KM (৳50)' : '1KM (৳100)';
+      
+      // Calculate footman earnings (90% of price, 10% commission)
+      const commissionRate = 0.10; // 10% commission
+      const footmanEarnings = price * (1 - commissionRate);
+      
+      return {
+        ...reqData,
+        distance_km: distance.toFixed(2),
+        price_tier: priceTier,
+        display_price: priceDisplay, // Shows actual price: ৳50 or ৳100
+        actual_price: price, // 50 or 100
+        footman_earnings: footmanEarnings,
+        commission: price * commissionRate
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        footman_location: {
+          latitude: user.latitude,
+          longitude: user.longitude
+        },
+        requests: formattedRequests,
+        count: formattedRequests.length,
+        radius_km: 1,
+        pricing_info: {
+          '0_0.5_km': '৳50 (Footman earns: ৳45 after 10% commission)',
+          '0.5_1_km': '৳100 (Footman earns: ৳90 after 10% commission)',
+          max_radius: '1KM'
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get available requests error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch requests',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 2. ACCEPT REQUEST
+ */
+exports.acceptRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can accept requests'
+      });
+    }
+
+    // Find request
+    const request = await Request.findByPk(id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    // Check if request is available
+    if (request.request_status !== 'searching' || request.assigned_footman_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Request is not available'
+      });
+    }
+
+    // Check distance (MAX 1KM)
+    if (user.latitude && user.longitude) {
+      const distance = this._calculateDistance(
+        user.latitude, user.longitude,
+        request.pickup_lat, request.pickup_lng
+      );
+      
+      if (distance > 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'You are outside 1KM service radius'
+        });
+      }
+    }
+
+    // Calculate price based on distance
+    let footmanEarnings = 0;
+    let commission = 0;
+    if (user.latitude && user.longitude && request.pickup_lat && request.pickup_lng) {
+      const distance = this._calculateDistance(
+        user.latitude, user.longitude,
+        request.pickup_lat, request.pickup_lng
+      );
+      
+      // CORRECT PRICING: 0-0.5KM = ৳50, 0.5-1KM = ৳100
+      const price = distance <= 0.5 ? 50 : 100;
+      const commissionRate = 0.10; // 10% commission
+      footmanEarnings = price * (1 - commissionRate);
+      commission = price * commissionRate;
+    }
+
+    // Accept request with calculated earnings
+    await request.update({
+      assigned_footman_id: footman_id,
+      request_status: 'accepted_by_partner',
+      accepted_at: new Date(),
+      footman_earnings: footmanEarnings,
+      commission: commission,
+      price: footmanEarnings + commission // Total price paid by customer
+    });
+
+    res.json({
+      success: true,
+      message: 'Request accepted! Go help the customer.',
+      data: { request }
+    });
+
+  } catch (error) {
+    console.error('Accept request error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to accept request',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 3. REJECT REQUEST (UPDATED: Now handles forwarding accepted requests)
+ */
+exports.rejectRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const footman_id = req.user.id;
+
+    // Find request
+    const request = await Request.findByPk(id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    let message = 'Request rejected. Next Footman will be notified.';
+    
+    // CASE 1: Request is in 'searching' status (not accepted yet)
+    if (request.request_status === 'searching') {
+      // Just don't accept - system will find next Footman
+      // No database changes needed
+    }
+    // CASE 2: Request is 'accepted_by_partner' AND assigned to this footman (FORWARDING)
+    else if (request.request_status === 'accepted_by_partner' && 
+             request.assigned_footman_id === footman_id) {
+      
+      // Reset request to searching so other footmen can see it
+      await request.update({
+        request_status: 'searching',
+        assigned_footman_id: null,
+        accepted_at: null
+      });
+      
+      message = 'Request forwarded to next Footman. You are now available for new requests.';
+    }
+    // CASE 3: Request is not assigned to this footman
+    else if (request.assigned_footman_id !== footman_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'This request is not assigned to you'
+      });
+    }
+    // CASE 4: Request is in other status (ongoing, completed)
+    else {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot reject request with status: ${request.request_status}`
+      });
+    }
+
+    res.json({
+      success: true,
+      message: message
+    });
+
+  } catch (error) {
+    console.error('Reject request error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to reject request'
+    });
+  }
+};
+
+/**
+ * 4. GET FOOTMAN'S ACTIVE REQUESTS
+ */
+exports.getMyActiveRequests = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    const requests = await Request.findAll({
+      where: {
+        assigned_footman_id: footman_id,
+        request_status: ['accepted_by_partner', 'ongoing']
+      },
+      include: [
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ],
+      order: [['accepted_at', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      data: { requests }
+    });
+  } catch (error) {
+    console.error('Get active requests error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your requests'
+    });
+  }
+};
+
+/**
+ * 5. UPDATE REQUEST STATUS (ongoing, completed)
+ */
+exports.updateRequestStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const footman_id = req.user.id;
+
+    // Validate status
+    const validStatuses = ['ongoing', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be: ${validStatuses.join(', ')}`
+      });
+    }
+
+    // Find request
+    const request = await Request.findOne({
+      where: {
+        id,
+        assigned_footman_id: footman_id
+      }
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found or not assigned to you'
+      });
+    }
+
+    // Update status
+    const updateData = { request_status: status };
+    if (status === 'completed') {
+      updateData.completed_at = new Date();
+      
+      // Update Footman stats
+      await User.increment('total_completed_jobs', {
+        where: { id: footman_id }
+      });
+    }
+
+    await request.update(updateData);
+
+    res.json({
+      success: true,
+      message: `Request marked as ${status}`,
+      data: { request }
+    });
+
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update status'
+    });
+  }
+};
+
+/**
+ * 6. GET FOOTMAN EARNINGS
+ */
+exports.getFootmanEarnings = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access earnings'
+      });
+    }
+
+    // Calculate earnings from completed requests
+    const earningsResult = await Request.findOne({
+      where: {
+        assigned_footman_id: footman_id,
+        request_status: 'completed'
+      },
+      attributes: [
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_jobs'],
+        [sequelize.fn('SUM', sequelize.col('footman_earnings')), 'total_earnings'],
+        [sequelize.fn('SUM', sequelize.col('commission')), 'total_commission']
+      ],
+      raw: true
+    });
+
+    const totalJobs = parseInt(earningsResult?.total_jobs || 0);
+    const totalEarnings = parseFloat(earningsResult?.total_earnings || 0);
+    const totalCommission = parseFloat(earningsResult?.total_commission || 0);
+
+    res.json({
+      success: true,
+      data: {
+        profile: {
+          name: user.full_name,
+          rating: user.rating,
+          total_completed_jobs: user.total_completed_jobs,
+          is_online: user.is_online
+        },
+        earnings: {
+          total_jobs: totalJobs,
+          total_earnings: totalEarnings,
+          total_commission: totalCommission,
+          net_earnings: totalEarnings
+        },
+        pricing_tiers: {
+          '0_0.5_km': '৳50 (Footman earns: ৳45 after 10% commission)',
+          '0.5_1_km': '৳100 (Footman earns: ৳90 after 10% commission)',
+          max_radius: '1KM'
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get earnings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch earnings'
+    });
+  }
+};
+
+// Helper: Calculate distance
+exports._calculateDistance = function(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};

@@ -1,0 +1,144 @@
+const { Sequelize } = require('sequelize');
+const PricingService = require('./pricing.service');
+const User = require('../models/User');
+const { sequelize } = require('../config/database');
+
+class MatchingService {
+    /**
+     * Find online Footmen within 3KM radius
+     * Sorted by nearest first
+     */
+    static async findNearbyFootmen(userLat, userLng, radiusKm = 3, limit = 10) {
+        try {
+            // Alternative approach: Use subquery or WHERE with calculated distance
+            const footmen = await User.findAll({
+                where: {
+                    user_type: 'delivery',
+                    is_online: true,
+                    is_active: true,
+                    latitude: { [Sequelize.Op.ne]: null },
+                    longitude: { [Sequelize.Op.ne]: null },
+                    // Calculate distance in WHERE clause using a simpler approach
+                    // We'll filter after fetching if needed
+                },
+                attributes: [
+                    'id',
+                    'full_name',
+                    'phone',
+                    'latitude',
+                    'longitude',
+                    'rating',
+                    'total_completed_jobs'
+                ],
+                raw: true
+            });
+            
+            // Filter by distance using Haversine
+            const nearbyFootmen = footmen.filter(footman => {
+                if (!footman.latitude || !footman.longitude) return false;
+                
+                const distance = this.calculateDistance(
+                    userLat, userLng,
+                    footman.latitude, footman.longitude
+                );
+                
+                footman.distance_km = distance;
+                return distance <= radiusKm;
+            });
+            
+            // Sort by distance
+            nearbyFootmen.sort((a, b) => a.distance_km - b.distance_km);
+            
+            // Apply limit
+            const result = nearbyFootmen.slice(0, limit);
+            
+            console.log(`Found ${result.length} online Footmen within ${radiusKm}KM`);
+            
+            return {
+                success: true,
+                count: result.length,
+                radius: radiusKm,
+                footmen: result.map(f => ({
+                    ...f,
+                    distance_km: parseFloat(f.distance_km).toFixed(2)
+                })),
+                logic: 'Nearest first → if rejected → next nearest'
+            };
+            
+        } catch (error) {
+            console.error('Error finding nearby footmen:', error);
+            throw new Error('Failed to find nearby footmen');
+        }
+    }
+
+    /**
+     * Assign order to nearest available Footman
+     * Returns the assigned Footman or null if none available
+     */
+    static async assignToNearestFootman(orderId, pickupLat, pickupLng, orderDetails) {
+        try {
+            const nearbyFootmen = await this.findNearbyFootmen(pickupLat, pickupLng, 3, 5);
+            
+            if (nearbyFootmen.count === 0) {
+                return {
+                    success: false,
+                    message: 'No Footmen available within 3KM radius',
+                    retry: true
+                };
+            }
+            
+            // For now, return the nearest Footman
+            // In future: Implement request/accept logic
+            const nearestFootman = nearbyFootmen.footmen[0];
+            
+            console.log(`Order ${orderId} assigned to Footman ${nearestFootman.id} (${nearestFootman.full_name})`);
+            
+            return {
+                success: true,
+                assigned: true,
+                footman: nearestFootman,
+                orderId: orderId,
+                distance: nearestFootman.distance_km,
+                timestamp: new Date().toISOString()
+            };
+            
+        } catch (error) {
+            console.error('Error assigning footman:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Validate if distance is within 3KM limit
+     */
+    static validateDistance(pickupLat, pickupLng, deliveryLat, deliveryLng) {
+        const distance = PricingService.calculateDistance(
+            pickupLat, pickupLng, deliveryLat, deliveryLng
+        );
+        
+        if (distance > 3) {
+            throw new Error(`Distance ${distance.toFixed(2)}KM exceeds 3KM service limit`);
+        }
+        
+        return distance;
+    }
+
+    /**
+     * Check if Footman is within 3KM of pickup
+     */
+    static isWithinRadius(footmanLat, footmanLng, pickupLat, pickupLng) {
+        const distance = PricingService.calculateDistance(
+            footmanLat, footmanLng, pickupLat, pickupLng
+        );
+        return distance <= 3;
+    }
+
+    /**
+     * Calculate actual distance between two points
+     */
+    static calculateDistance(lat1, lng1, lat2, lng2) {
+        return PricingService.calculateDistance(lat1, lng1, lat2, lng2);
+    }
+}
+
+module.exports = MatchingService;

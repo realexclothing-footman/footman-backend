@@ -1,0 +1,467 @@
+const User = require('../models/User');
+const Order = require('../models/Order');
+const MatchingService = require('../services/matching.service');
+const CommissionService = require('../services/commission.service');
+const { sequelize } = require('../config/database');
+
+// ==================== FOOTMAN (PARTNER) APP CONTROLLERS ====================
+
+/**
+ * 1. FOOTMAN GOES ONLINE/OFFLINE
+ */
+exports.updateOnlineStatus = async (req, res) => {
+  try {
+    const { is_online } = req.body;
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access this endpoint'
+      });
+    }
+
+    // Update online status
+    await user.setOnlineStatus(is_online);
+
+    res.status(200).json({
+      success: true,
+      message: `Footman is now ${is_online ? 'ONLINE' : 'OFFLINE'}`,
+      data: {
+        is_online: user.is_online,
+        last_location_update: user.last_location_update
+      }
+    });
+  } catch (error) {
+    console.error('Update online status error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update online status',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 2. UPDATE FOOTMAN LOCATION (REAL-TIME)
+ */
+exports.updateLocation = async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can update location'
+      });
+    }
+
+    // Validate coordinates
+    if (!latitude || !longitude || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid coordinates'
+      });
+    }
+
+    // Update location
+    await user.updateLocation(latitude, longitude);
+
+    res.status(200).json({
+      success: true,
+      message: 'Location updated successfully',
+      data: {
+        latitude: user.latitude,
+        longitude: user.longitude,
+        last_location_update: user.last_location_update,
+        is_online: user.is_online
+      }
+    });
+  } catch (error) {
+    console.error('Update location error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update location',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 3. GET AVAILABLE ORDERS (WITHIN 3KM RADIUS)
+ */
+exports.getAvailableOrders = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman and online
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access this endpoint'
+      });
+    }
+
+    if (!user.is_online) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must be online to see available orders'
+      });
+    }
+
+    // Get Footman's current location
+    if (!user.latitude || !user.longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Location not set. Please update your location first.'
+      });
+    }
+
+    // Find orders in 'searching' status (looking for Footmen)
+    const orders = await Order.findAll({
+      where: {
+        order_status: 'searching',
+        assigned_footman_id: null
+      },
+      include: [
+        {
+          model: User,
+          as: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ],
+      order: [['created_at', 'ASC']]
+    });
+
+    // Filter orders within 3KM radius
+    const nearbyOrders = orders.filter(order => {
+      if (!order.pickup_lat || !order.pickup_lng) return false;
+      
+      const distance = MatchingService.calculateDistance(
+        user.latitude, user.longitude,
+        order.pickup_lat, order.pickup_lng
+      );
+      
+      order.distance_km = distance;
+      return distance <= 3; // 3KM radius
+    });
+
+    // Sort by nearest first
+    nearbyOrders.sort((a, b) => a.distance_km - b.distance_km);
+
+    // Simplify response for now
+    const ordersWithDetails = nearbyOrders.map(order => {
+      const orderData = order.toJSON();
+      return {
+        ...orderData,
+        distance_km: order.distance_km.toFixed(2),
+        commission_amount: orderData.commission_amount,
+        footman_earnings: orderData.footman_earnings
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        footman_location: {
+          latitude: user.latitude,
+          longitude: user.longitude
+        },
+        orders: ordersWithDetails,
+        count: ordersWithDetails.length,
+        radius_km: 3
+      }
+    });
+  } catch (error) {
+    console.error('Get available orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available orders',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 4. ACCEPT ORDER
+ */
+exports.acceptOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can accept orders'
+      });
+    }
+
+    // Find order
+    const order = await Order.findByPk(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Check if order is available for acceptance
+    if (order.order_status !== 'searching' || order.assigned_footman_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is not available for acceptance'
+      });
+    }
+
+    // Check if Footman is within 3KM radius
+    if (user.latitude && user.longitude && order.pickup_lat && order.pickup_lng) {
+      const isWithinRadius = MatchingService.isWithinRadius(
+        user.latitude, user.longitude,
+        order.pickup_lat, order.pickup_lng
+      );
+      
+      if (!isWithinRadius) {
+        return res.status(400).json({
+          success: false,
+          message: 'You are outside the 3KM service radius for this order'
+        });
+      }
+    }
+
+    // Accept order
+    await order.update({
+      assigned_footman_id: footman_id,
+      order_status: 'accepted',
+      accepted_at: new Date()
+    });
+
+    // Get commission details
+    const commissionBreakdown = CommissionService.calculateCommission(order.estimated_amount);
+
+    res.status(200).json({
+      success: true,
+      message: 'Order accepted successfully',
+      data: {
+        order: {
+          ...order.toJSON(),
+          commission: commissionBreakdown
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Accept order error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to accept order',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 5. GET FOOTMAN'S ACTIVE ORDERS
+ */
+exports.getMyOrders = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access this endpoint'
+      });
+    }
+
+    // Get Footman's orders (accepted, picked_up, delivered but not completed)
+    const orders = await Order.findAll({
+      where: {
+        assigned_footman_id: footman_id,
+        order_status: ['accepted', 'picked_up', 'delivered']
+      },
+      include: [
+        {
+          model: User,
+          as: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ],
+      order: [['accepted_at', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { orders }
+    });
+  } catch (error) {
+    console.error('Get my orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch your orders',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 6. UPDATE ORDER STATUS (pickup, deliver, complete)
+ */
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const footman_id = req.user.id;
+
+    // Validate status
+    const validStatuses = ['picked_up', 'delivered', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    // Find order
+    const order = await Order.findOne({
+      where: {
+        id,
+        assigned_footman_id: footman_id
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found or not assigned to you'
+      });
+    }
+
+    // Update status with appropriate timestamp
+    const updateData = { order_status: status };
+    if (status === 'picked_up') updateData.picked_up_at = new Date();
+    if (status === 'delivered') updateData.delivered_at = new Date();
+    if (status === 'completed') updateData.delivered_at = new Date(); // Ensure delivered_at is set
+
+    await order.update(updateData);
+
+    // If order is completed, apply commission and update Footman stats
+    if (status === 'completed') {
+      try {
+        await CommissionService.applyCommissionToOrder(order.id, order.estimated_amount);
+        
+        // Update Footman's completed jobs count
+        await user.increment('total_completed_jobs');
+        
+        // In future: Update Footman's earnings balance here
+        
+      } catch (commissionError) {
+        console.error('Commission application error:', commissionError);
+        // Don't fail the request
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Order marked as ${status.replace('_', ' ')}`,
+      data: { order }
+    });
+  } catch (error) {
+    console.error('Update order status error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update order status',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 7. GET FOOTMAN STATS & EARNINGS
+ */
+exports.getFootmanStats = async (req, res) => {
+  try {
+    const footman_id = req.user.id;
+
+    // Check if user is a Footman
+    const user = await User.findByPk(footman_id);
+    if (user.user_type !== 'delivery') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Footmen can access this endpoint'
+      });
+    }
+
+    // Get stats from database
+    const completedOrders = await Order.count({
+      where: {
+        assigned_footman_id: footman_id,
+        order_status: 'completed'
+      }
+    });
+
+    const activeOrders = await Order.count({
+      where: {
+        assigned_footman_id: footman_id,
+        order_status: ['accepted', 'picked_up', 'delivered']
+      }
+    });
+
+    // Calculate earnings (sum of footman_earnings for completed orders)
+    const earningsResult = await Order.findOne({
+      where: {
+        assigned_footman_id: footman_id,
+        order_status: 'completed'
+      },
+      attributes: [
+        [sequelize.fn('SUM', sequelize.col('footman_earnings')), 'total_earnings'],
+        [sequelize.fn('SUM', sequelize.col('tip_amount')), 'total_tips']
+      ],
+      raw: true
+    });
+
+    const totalEarnings = parseFloat(earningsResult?.total_earnings || 0);
+    const totalTips = parseFloat(earningsResult?.total_tips || 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        profile: {
+          full_name: user.full_name,
+          phone: user.phone,
+          rating: user.rating,
+          total_completed_jobs: user.total_completed_jobs,
+          is_online: user.is_online
+        },
+        stats: {
+          completed_orders: completedOrders,
+          active_orders: activeOrders,
+          total_earnings: totalEarnings,
+          total_tips: totalTips,
+          total_income: totalEarnings + totalTips
+        },
+        current_location: {
+          latitude: user.latitude,
+          longitude: user.longitude,
+          last_updated: user.last_location_update
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get footman stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch stats',
+      error: error.message
+    });
+  }
+};
