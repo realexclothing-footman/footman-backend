@@ -22,6 +22,8 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from uploads directory
 app.use('/api/v1/uploads/profiles', express.static('uploads/users/profiles'));
 app.use('/api/v1/uploads/nid', express.static('uploads/users/nid'));
+// Serve APK downloads
+app.use('/downloads', express.static('uploads/downloads'));
 // Serve HTML files from current directory
 app.use(express.static("."));
 // Health check
