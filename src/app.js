@@ -23,8 +23,8 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from uploads directory
 app.use('/api/v1/uploads/profiles', express.static(path.join(__dirname, 'uploads/users/profiles')));
 app.use('/api/v1/uploads/nid', express.static(path.join(__dirname, 'uploads/users/nid')));
-// Serve APK downloads - FIXED: use absolute path
-app.use('/downloads', express.static(path.join(__dirname, 'uploads/downloads')));
+// Serve APK downloads - FIXED: point to public/downloads
+app.use('/downloads', express.static(path.join(__dirname, 'public/downloads')));
 // Serve HTML files from current directory
 app.use(express.static("."));
 // Health check
