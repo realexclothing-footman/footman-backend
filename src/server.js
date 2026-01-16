@@ -6,8 +6,12 @@ const PORT = process.env.PORT || 3000;
 const syncDatabase = async () => {
   try {
     console.log('🔄 Syncing database tables...');
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database tables synchronized');
+    
+    // SAFE: Remove { alter: true } to prevent automatic schema changes
+    // In production, use migrations instead: npx sequelize-cli db:migrate
+    await sequelize.sync();
+    
+    console.log('✅ Database tables synchronized (safe mode)');
     return true;
   } catch (error) {
     console.error('❌ Database sync failed:', error.message);
