@@ -117,6 +117,18 @@ const User = sequelize.define('User', {
     }
   },
   
+  // FORGOT PASSWORD OTP FIELDS
+  reset_password_otp: {
+    type: DataTypes.STRING(6),
+    allowNull: true,
+    comment: 'OTP for password reset'
+  },
+  reset_password_expires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'OTP expiry time'
+  },
+  
   language: {
     type: DataTypes.STRING(10),
     defaultValue: 'en'

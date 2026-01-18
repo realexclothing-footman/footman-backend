@@ -5,13 +5,14 @@ const authMiddleware = require('../middleware/auth.middleware');
 const { uploadRegistration, uploadProfileImage } = require('../middleware/upload.middleware');
 
 // Public routes
-
-// Registration with optional file uploads
 router.post('/register', uploadRegistration, authController.register);
-
 router.post('/login', authController.login);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
 // Protected routes
 router.get('/profile', authMiddleware, authController.getProfile);
+router.put('/profile', authMiddleware, authController.updateProfile);
+router.put('/change-password', authMiddleware, authController.changePassword);
 
 module.exports = router;

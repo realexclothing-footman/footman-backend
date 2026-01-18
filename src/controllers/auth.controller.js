@@ -204,7 +204,205 @@ exports.login = async (req, res) => {
 };
 
 /**
- * 3. GET USER PROFILE
+ * 3. FORGOT PASSWORD - Send OTP
+ */
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    // Find user
+    const user = await User.findOne({ where: { phone } });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found with this phone number'
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // In production: Send OTP via SMS (bKash/Nagad API)
+    // For development: Return OTP in response
+    console.log(`OTP for ${phone}: ${otp}`);
+    
+    // Save OTP to user (with 10 minute expiry)
+    user.reset_password_otp = otp;
+    user.reset_password_expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'OTP sent to your phone',
+      data: {
+        phone: phone,
+        otp: otp // Remove this in production, only for development
+      }
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to process request',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 4. RESET PASSWORD - Verify OTP and set new password
+ */
+exports.resetPassword = async (req, res) => {
+  try {
+    const { phone, otp, new_password } = req.body;
+
+    // Find user
+    const user = await User.findOne({ where: { phone } });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check OTP
+    if (!user.reset_password_otp || user.reset_password_otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP'
+      });
+    }
+
+    // Check OTP expiry
+    if (!user.reset_password_expires || new Date() > user.reset_password_expires) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired'
+      });
+    }
+
+    // Update password
+    user.password_hash = await bcrypt.hash(new_password, 10);
+    user.reset_password_otp = null;
+    user.reset_password_expires = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successful'
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to reset password',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 5. UPDATE USER PROFILE
+ */
+exports.updateProfile = async (req, res) => {
+  try {
+    const { full_name, phone, email } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if new phone already exists (if changing phone)
+    if (phone && phone !== user.phone) {
+      const existingUser = await User.findOne({ where: { phone } });
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number already in use'
+        });
+      }
+    }
+
+    // Update fields
+    if (full_name) user.full_name = full_name;
+    if (phone) user.phone = phone;
+    if (email !== undefined) user.email = email;
+
+    await user.save();
+
+    // Remove password from response
+    const userResponse = user.toJSON();
+    delete userResponse.password_hash;
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: { user: userResponse }
+    });
+
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update profile',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 6. CHANGE PASSWORD (when logged in)
+ */
+exports.changePassword = async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Verify current password
+    const validPassword = await bcrypt.compare(current_password, user.password_hash);
+    if (!validPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Update password
+    user.password_hash = await bcrypt.hash(new_password, 10);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to change password',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 7. GET USER PROFILE
  */
 exports.getProfile = async (req, res) => {
   try {
