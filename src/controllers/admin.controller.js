@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Request = require('../models/Request');
+const sequelize = require('../models').sequelize;
 
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
@@ -24,16 +25,18 @@ const isAdmin = async (req, res, next) => {
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    // Get total counts
+    // Get total counts from USERS table
     const totalCustomers = await User.count({ where: { user_type: 'customer' } });
     const totalDeliveryBoys = await User.count({ where: { user_type: 'delivery' } });
-    const totalOrders = await Order.count();
     
-    // Get today's orders
+    // Get total requests count
+    const totalRequests = await Request.count();
+    
+    // Get today's requests
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const todayOrders = await Order.count({
+    const todayRequests = await Request.count({
       where: {
         created_at: {
           [Op.gte]: today
@@ -41,12 +44,52 @@ exports.getDashboardStats = async (req, res) => {
       }
     });
 
-    // Get revenue (simplified - in real app, sum actual payments)
-    const completedOrders = await Order.count({
-      where: { order_status: 'delivered' }
+    // Calculate REAL revenue from requests
+    const completedRequests = await Request.findAll({
+      where: { request_status: 'completed' },
+      attributes: ['base_price', 'commission']
     });
     
-    const estimatedRevenue = completedOrders * 30; // Assuming 30 BDT service charge per order
+    // Calculate totals
+    let totalRevenue = 0;
+    let totalCommission = 0;
+    let partnerEarnings = 0;
+    
+    completedRequests.forEach(request => {
+      const revenue = parseFloat(request.base_price) || 0;
+      const commission = parseFloat(request.commission) || 0;
+      totalRevenue += revenue;
+      totalCommission += commission;
+      partnerEarnings += (revenue - commission);
+    });
+
+    // Get payment method breakdown (simplified for now)
+    const paymentMethods = await Request.findAll({
+      where: { request_status: 'completed' },
+      attributes: ['customer_selected_payment'],
+      raw: true
+    });
+    
+    const paymentBreakdown = {};
+    paymentMethods.forEach(payment => {
+      const method = payment.customer_selected_payment || 'unknown';
+      paymentBreakdown[method] = (paymentBreakdown[method] || 0) + 1;
+    });
+
+    // Get request status breakdown
+    const statusCounts = await Request.findAll({
+      attributes: ['request_status'],
+      group: ['request_status'],
+      raw: true
+    });
+
+    const statusBreakdown = {};
+    for (const status of statusCounts) {
+      const count = await Request.count({
+        where: { request_status: status.request_status }
+      });
+      statusBreakdown[status.request_status] = count;
+    }
 
     res.status(200).json({
       success: true,
@@ -54,9 +97,13 @@ exports.getDashboardStats = async (req, res) => {
         stats: {
           total_customers: totalCustomers,
           total_delivery_boys: totalDeliveryBoys,
-          total_orders: totalOrders,
-          today_orders: todayOrders,
-          estimated_revenue: estimatedRevenue
+          total_requests: totalRequests,
+          today_requests: todayRequests,
+          total_revenue: totalRevenue,
+          total_commission: totalCommission,
+          partner_earnings: partnerEarnings,
+          payment_breakdown: paymentBreakdown,
+          status_breakdown: statusBreakdown
         }
       }
     });
@@ -140,7 +187,7 @@ exports.getAllOrders = async (req, res) => {
     });
 
     res.status(200).json({
-      success: true,
+      success: false,
       data: {
         orders,
         pagination: {
