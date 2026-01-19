@@ -11,6 +11,7 @@ router.use(adminController.isAdmin);
 router.get('/dashboard', adminController.getDashboardStats);
 router.get('/users', adminController.getAllUsers);
 router.get('/orders', adminController.getAllOrders);
+router.get('/requests', adminController.getAllRequests);
 router.put('/users/:id/status', adminController.updateUserStatus);
 router.put('/orders/:id/status', adminController.updateOrderStatus);
 

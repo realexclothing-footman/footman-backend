@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const User = require('../models/User');
 const Order = require('../models/Order');
+const Request = require('../models/Request');
 
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
@@ -155,6 +156,67 @@ exports.getAllOrders = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch orders',
+      error: error.message
+    });
+  }
+};
+
+exports.getAllRequests = async (req, res) => {
+  try {
+    const { status, page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const where = {};
+    if (status) {
+      where.request_status = status;
+    }
+
+    const { count, rows: requests } = await Request.findAndCountAll({
+      where,
+      include: [
+        {
+          model: User,
+          as: 'customer',
+          attributes: ['id', 'full_name', 'phone', 'email']
+        },
+        {
+          model: User,
+          as: 'assigned_footman',
+          attributes: ['id', 'full_name', 'phone', 'is_online']
+        }
+      ],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['created_at', 'DESC']]
+    });
+
+    // Calculate totals
+    const totalRevenue = requests.reduce((sum, req) => sum + parseFloat(req.total_amount || 0), 0);
+    const totalCommission = requests.reduce((sum, req) => sum + parseFloat(req.commission_amount || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        requests,
+        totals: {
+          total_requests: count,
+          total_revenue: totalRevenue,
+          total_commission: totalCommission,
+          partner_earnings: totalRevenue - totalCommission
+        },
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get all requests error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch requests',
       error: error.message
     });
   }
