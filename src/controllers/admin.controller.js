@@ -181,7 +181,7 @@ exports.getAllRequests = async (req, res) => {
         },
         {
           model: User,
-          as: 'assigned_footman',
+          as: 'footman',
           attributes: ['id', 'full_name', 'phone', 'is_online']
         }
       ],
@@ -191,8 +191,8 @@ exports.getAllRequests = async (req, res) => {
     });
 
     // Calculate totals
-    const totalRevenue = requests.reduce((sum, req) => sum + parseFloat(req.total_amount || 0), 0);
-    const totalCommission = requests.reduce((sum, req) => sum + parseFloat(req.commission_amount || 0), 0);
+    const totalRevenue = requests.reduce((sum, req) => sum + parseFloat(req.base_price || 0), 0);
+    const totalCommission = requests.reduce((sum, req) => sum + parseFloat(req.commission || 0), 0);
 
     res.status(200).json({
       success: true,
