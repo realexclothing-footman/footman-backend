@@ -622,6 +622,119 @@
             justify-content: center;
         }
 
+        /* ========== LOGIN SCREEN ========== */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 10000;
+        }
+
+        .login-box {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: loginFadeIn 0.5s ease;
+        }
+
+        @keyframes loginFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-logo {
+            width: 80px;
+            height: 80px;
+            background: var(--primary);
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 32px;
+            color: white;
+            margin: 0 auto 20px;
+        }
+
+        .login-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            color: var(--secondary);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--dark);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 16px;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .login-info {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .login-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
         /* ========== MODAL ========== */
         .modal {
             display: none;
@@ -1058,11 +1171,44 @@
     </style>
 </head>
 <body>
+    <!-- Login Screen (Shows first if not logged in) -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <div class="login-header">
+                <div class="login-logo">F</div>
+                <h1 class="login-title">FOOTMAN Admin</h1>
+                <p class="login-subtitle">Business Administration Panel</p>
+            </div>
+            
+            <div class="login-info">
+                💡 <strong>Default Admin Credentials:</strong><br>
+                Phone: <code>01700000000</code><br>
+                Password: <code>admin123</code>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Phone Number</label>
+                <input type="tel" id="loginPhone" class="form-control" value="01700000000" placeholder="Enter phone number">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" id="loginPassword" class="form-control" placeholder="Enter password">
+            </div>
+            
+            <div class="login-error" id="loginError"></div>
+            
+            <button class="btn btn-primary" id="loginBtn" style="width: 100%; padding: 16px; font-size: 16px;">
+                🔒 Login to Admin Panel
+            </button>
+        </div>
+    </div>
+
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Main App Container -->
-    <div class="app-container">
+    <!-- Main App Container (Hidden until login) -->
+    <div class="app-container d-none" id="appContainer">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -1826,29 +1972,6 @@
         </div>
     </div>
 
-    <!-- Login Modal (Fallback) -->
-    <div class="modal" id="loginModal">
-        <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header">
-                <h2 class="modal-title">Admin Login</h2>
-            </div>
-            <div class="modal-body">
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Phone Number</label>
-                    <input type="tel" id="loginPhone" class="form-control" placeholder="01700000000" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: var(--radius);">
-                </div>
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Password</label>
-                    <input type="password" id="loginPassword" class="form-control" placeholder="Enter password" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: var(--radius);">
-                </div>
-                <div id="loginError" style="color: var(--danger); margin-bottom: 20px; display: none;"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" id="modalLoginBtn">Login</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         // ========== CONFIGURATION ==========
         const Config = {
@@ -1881,8 +2004,8 @@
         };
 
         // ========== AUTHENTICATION ==========
-        function initAuth() {
-            // Check for token in URL first
+        async function initAuth() {
+            // Check for token in URL first (for direct login from fix-admin-login.html)
             const urlParams = new URLSearchParams(window.location.search);
             const urlToken = urlParams.get('token');
             
@@ -1892,6 +2015,7 @@
                 // Clean URL
                 window.history.replaceState({}, document.title, window.location.pathname);
             } else {
+                // Check local storage
                 State.token = localStorage.getItem(Config.TOKEN_KEY);
             }
             
@@ -1905,32 +2029,58 @@
                 }
             }
             
-            if (!State.token) {
-                showLoginModal();
-                return false;
+            // If we have a token, verify it by loading user data
+            if (State.token) {
+                try {
+                    const userResponse = await fetch(`${Config.API_BASE}/auth/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${State.token}`
+                        }
+                    });
+                    
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json();
+                        if (userData.success) {
+                            State.currentUser = userData.data.user;
+                            localStorage.setItem(Config.USER_KEY, JSON.stringify(userData.data.user));
+                            showApp();
+                            return true;
+                        }
+                    }
+                } catch (error) {
+                    console.log('Token validation failed:', error);
+                }
             }
             
-            return true;
+            // Show login screen if no valid token
+            showLogin();
+            return false;
         }
 
-        function showLoginModal() {
-            document.getElementById('loginModal').classList.add('show');
+        function showLogin() {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('appContainer').classList.add('d-none');
         }
 
+        function showApp() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('appContainer').classList.remove('d-none');
+            initApp();
+        }
 
         async function login(phone, password) {
-            const loginBtn = document.getElementById("loginBtn");
+            const loginBtn = document.getElementById('loginBtn');
             const originalText = loginBtn.textContent;
-            const errorDisplay = document.getElementById("loginError");
+            const errorDisplay = document.getElementById('loginError');
             
             try {
-                loginBtn.textContent = "Logging in...";
+                loginBtn.textContent = 'Logging in...';
                 loginBtn.disabled = true;
-                errorDisplay.style.display = "none";
+                errorDisplay.style.display = 'none';
                 
                 const response = await fetch(`${Config.API_BASE}/auth/login`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ phone, password })
                 });
                 
@@ -1943,23 +2093,21 @@
                     localStorage.setItem(Config.TOKEN_KEY, State.token);
                     localStorage.setItem(Config.USER_KEY, JSON.stringify(data.data.user));
                     
-                    showToast("Login successful!", "success");
-                    document.getElementById("loginScreen").style.display = "none";
-                    document.getElementById("appContainer").classList.remove("d-none");
-                    initApp();
+                    showToast('Login successful!', 'success');
+                    showApp();
                     loadDashboard();
                 } else {
-                    throw new Error(data.message || "Login failed");
+                    throw new Error(data.message || 'Login failed');
                 }
             } catch (error) {
                 errorDisplay.textContent = error.message;
-                errorDisplay.style.display = "block";
-                showToast(error.message, "error");
+                errorDisplay.style.display = 'block';
+                showToast(error.message, 'error');
             } finally {
                 loginBtn.textContent = originalText;
                 loginBtn.disabled = false;
             }
-        }        }
+        }
 
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
@@ -1967,14 +2115,14 @@
                 State.currentUser = null;
                 localStorage.removeItem(Config.TOKEN_KEY);
                 localStorage.removeItem(Config.USER_KEY);
-                showLoginModal();
+                showLogin();
             }
         }
 
         // ========== API SERVICE ==========
         async function apiRequest(endpoint, options = {}) {
             if (!State.token) {
-                showLoginModal();
+                showLogin();
                 throw new Error('Not authenticated');
             }
             
@@ -1995,7 +2143,7 @@
                 }
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 return await response.json();
@@ -2108,6 +2256,25 @@
             // Logout button
             document.getElementById('logoutBtn').addEventListener('click', logout);
             
+            // Login button
+            document.getElementById('loginBtn').addEventListener('click', () => {
+                const phone = document.getElementById('loginPhone').value;
+                const password = document.getElementById('loginPassword').value;
+                if (!phone || !password) {
+                    document.getElementById('loginError').textContent = 'Please enter phone and password';
+                    document.getElementById('loginError').style.display = 'block';
+                    return;
+                }
+                login(phone, password);
+            });
+            
+            // Enter key in login form
+            document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    document.getElementById('loginBtn').click();
+                }
+            });
+            
             // Modal close buttons
             document.getElementById('closeModal').addEventListener('click', () => {
                 document.getElementById('userModal').classList.remove('show');
@@ -2119,20 +2286,6 @@
             
             document.getElementById('closeRequestModal').addEventListener('click', () => {
                 document.getElementById('requestModal').classList.remove('show');
-            });
-            
-            // Login modal
-            document.getElementById('modalLoginBtn').addEventListener('click', () => {
-                const phone = document.getElementById('loginPhone').value;
-                const password = document.getElementById('loginPassword').value;
-                login(phone, password);
-            });
-            
-            // Enter key in login
-            document.getElementById('loginPassword').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    document.getElementById('modalLoginBtn').click();
-                }
             });
             
             // Close modals on outside click
@@ -2246,21 +2399,32 @@
                     updateUserCounts(users.data.users);
                 }
                 
-                // Load recent activity
+                // Update recent activity with real data
                 updateRecentActivity();
                 
             } catch (error) {
                 console.error('Dashboard load error:', error);
-                // Show mock data for demo
-                showMockDashboard();
+                showToast('Failed to load dashboard data', 'error');
             }
         }
 
         function updateDashboardStats(stats) {
-            document.getElementById("totalRevenue").textContent = formatCurrency(stats.total_revenue || stats.estimated_revenue || 0);
-            document.getElementById("totalRequests").textContent = stats.total_requests || stats.total_orders || 0;
-            document.getElementById("todayRequests").textContent = stats.today_requests || stats.today_orders || 0;
-        }        }
+            // Use REAL data from API
+            document.getElementById('totalRevenue').textContent = formatCurrency(stats.total_revenue || 0);
+            document.getElementById('totalRequests').textContent = stats.total_requests || 0;
+            document.getElementById('todayRequests').textContent = stats.today_requests || 0;
+            
+            // Update revenue change indicator
+            const revenueChange = document.getElementById('revenueChange');
+            if (stats.total_revenue > 0) {
+                revenueChange.innerHTML = `<span>↗</span> ${formatCurrency(stats.total_revenue)} total`;
+            } else {
+                revenueChange.innerHTML = `<span>→</span> No revenue yet`;
+            }
+            
+            // Update badges with real data
+            document.getElementById('requestsBadge').textContent = stats.total_requests || 0;
+        }
 
         function updateUserCounts(users) {
             const totalUsers = users.length;
@@ -2274,7 +2438,7 @@
             document.getElementById('onlinePartners').textContent = onlinePartners;
             document.getElementById('onlineUsers').textContent = onlinePartners;
             
-            // Update badges
+            // Update badges with REAL data
             document.getElementById('usersBadge').textContent = totalUsers;
             document.getElementById('partnersBadge').textContent = partners.length;
             document.getElementById('customersBadge').textContent = customers.length;
@@ -2287,62 +2451,70 @@
             State.data.customers = customers;
         }
 
-        function updateRecentActivity() {
-            const activityTable = document.getElementById('activityTable');
-            const activities = [
-                {
-                    time: 'Just now',
-                    user: 'System Administrator',
-                    activity: 'Logged into admin panel',
-                    status: 'success',
-                    amount: ''
-                },
-                {
-                    time: '5 minutes ago',
-                    user: 'Delivery Partner #3',
-                    activity: 'Completed delivery request #182',
-                    status: 'completed',
-                    amount: '৳ 90'
-                },
-                {
-                    time: '1 hour ago',
-                    user: 'Customer (017xxxxxxx)',
-                    activity: 'Created new delivery request',
-                    status: 'pending',
-                    amount: '৳ 100'
-                },
-                {
-                    time: '2 hours ago',
-                    user: 'Delivery Partner #2',
-                    activity: 'Went online',
-                    status: 'online',
-                    amount: ''
+        async function updateRecentActivity() {
+            try {
+                // Load real requests for activity
+                const requests = await apiRequest('/admin/requests?limit=10');
+                if (!requests?.success) return;
+                
+                const activityTable = document.getElementById('activityTable');
+                const recentRequests = requests.data.requests.slice(0, 5);
+                
+                if (recentRequests.length === 0) {
+                    activityTable.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div class="empty-title">No recent activity</div>
+                                <div class="empty-description">No delivery requests yet.</div>
+                            </td>
+                        </tr>
+                    `;
+                    return;
                 }
-            ];
-            
-            activityTable.innerHTML = activities.map(activity => `
-                <tr>
-                    <td>${activity.time}</td>
-                    <td>
-                        <div class="user-cell">
-                            <div class="avatar">${getInitials(activity.user)}</div>
-                            <div class="user-info">
-                                <div class="user-name">${activity.user}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td>${activity.activity}</td>
-                    <td>
-                        <span class="status-badge status-${activity.status}">
-                            ${activity.status === 'success' ? '✅' : 
-                              activity.status === 'completed' ? '✅' :
-                              activity.status === 'pending' ? '⏳' : '🟢'}
-                            ${activity.status}
-                        </span>
-                    </td>
-                    <td><strong>${activity.amount}</strong></td>
-                </tr>
-            `).join('');
+                
+                activityTable.innerHTML = recentRequests.map(req => {
+                    const statusIcons = {
+                        completed: '✅',
+                        cancelled: '❌',
+                        searching: '🔍',
+                        accepted: '✅'
+                    };
+                    
+                    const statusLabels = {
+                        completed: 'Completed',
+                        cancelled: 'Cancelled',
+                        searching: 'Searching',
+                        accepted: 'Accepted'
+                    };
+                    
+                    return `
+                        <tr>
+                            <td>${formatTimeAgo(req.created_at)}</td>
+                            <td>
+                                <div class="user-cell">
+                                    <div class="avatar">${getInitials(req.customer?.full_name)}</div>
+                                    <div class="user-info">
+                                        <div class="user-name">${req.customer?.full_name || 'Customer'}</div>
+                                        <div class="user-email">${req.customer?.phone || ''}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>Delivery request ${req.request_number}</td>
+                            <td>
+                                <span class="status-badge status-${req.request_status}">
+                                    ${statusIcons[req.request_status] || '⏳'}
+                                    ${statusLabels[req.request_status] || req.request_status}
+                                </span>
+                            </td>
+                            <td><strong>${formatCurrency(req.base_price)}</strong></td>
+                        </tr>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Activity load error:', error);
+            }
         }
 
         async function loadUsers() {
@@ -2626,12 +2798,8 @@
                 return;
             }
             
-            // Mock data for demo - in real app, you'd calculate these from requests
             tbody.innerHTML = customers.map(customer => {
-                const totalOrders = Math.floor(Math.random() * 10); // Mock
-                const totalSpent = totalOrders * 100; // Mock
-                const lastOrder = totalOrders > 0 ? '2 days ago' : 'Never';
-                const isActive = totalOrders > 0 || Math.random() > 0.5;
+                const isActive = customer.is_active !== false;
                 
                 const statusBadge = isActive ? 
                     '<span class="status-badge status-active">✅ Active</span>' : 
@@ -2649,9 +2817,9 @@
                             </div>
                         </td>
                         <td>${customer.phone || 'N/A'}</td>
-                        <td>${totalOrders}</td>
-                        <td>${formatCurrency(totalSpent)}</td>
-                        <td>${lastOrder}</td>
+                        <td>0</td>
+                        <td>${formatCurrency(0)}</td>
+                        <td>Never</td>
                         <td>${statusBadge}</td>
                         <td>
                             <button class="btn btn-primary btn-sm" onclick="viewUserDetails(${customer.id})">
@@ -2665,50 +2833,47 @@
 
         async function loadRequests() {
             try {
-                // Note: You need to implement /admin/requests endpoint
-                // For now, show mock data
-                showMockRequests();
+                const result = await apiRequest('/admin/requests?limit=50');
+                if (result?.success) {
+                    renderRequestsTable(result.data.requests);
+                    document.getElementById('requestsBadge').textContent = result.data.totals.total_requests || 0;
+                }
             } catch (error) {
                 console.error('Requests load error:', error);
-                showMockRequests();
+                document.getElementById('requestsTable').innerHTML = `
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load requests</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
-        function showMockRequests() {
+        function renderRequestsTable(requests) {
             const tbody = document.getElementById('requestsTable');
-            const mockRequests = [];
             
-            // Generate mock requests based on your 182 total
-            for (let i = 1; i <= 20; i++) {
-                const statuses = ['pending', 'accepted', 'ongoing', 'completed', 'cancelled'];
-                const methods = ['cash', 'bkash', 'nagad'];
-                const status = statuses[Math.floor(Math.random() * statuses.length)];
-                const method = methods[Math.floor(Math.random() * methods.length)];
-                const amount = Math.random() > 0.5 ? 100 : 50;
-                const commission = amount * 0.1;
-                
-                mockRequests.push({
-                    id: 180 + i,
-                    customer: `Customer ${i}`,
-                    partner: status !== 'pending' ? `Partner ${Math.ceil(Math.random() * 5)}` : null,
-                    status,
-                    amount,
-                    commission,
-                    method,
-                    created: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-                });
+            if (!requests || requests.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <div class="empty-title">No delivery requests</div>
+                            <div class="empty-description">No delivery requests have been made yet.</div>
+                        </td>
+                    </tr>
+                `;
+                return;
             }
             
-            // Update badge
-            document.getElementById('requestsBadge').textContent = '182';
-            
-            tbody.innerHTML = mockRequests.map(req => {
+            tbody.innerHTML = requests.map(req => {
                 const statusBadges = {
-                    pending: '<span class="status-badge status-pending">⏳ Pending</span>',
-                    accepted: '<span class="status-badge status-active">✅ Accepted</span>',
-                    ongoing: '<span class="status-badge status-ongoing">🚚 Ongoing</span>',
                     completed: '<span class="status-badge status-completed">✅ Completed</span>',
-                    cancelled: '<span class="status-badge status-inactive">❌ Cancelled</span>'
+                    cancelled: '<span class="status-badge status-inactive">❌ Cancelled</span>',
+                    searching: '<span class="status-badge status-pending">🔍 Searching</span>',
+                    accepted: '<span class="status-badge status-active">✅ Accepted</span>'
                 };
                 
                 const methodBadges = {
@@ -2719,14 +2884,32 @@
                 
                 return `
                     <tr>
-                        <td>#REQ${req.id.toString().padStart(6, '0')}</td>
-                        <td>${req.customer}</td>
-                        <td>${req.partner || '-'}</td>
-                        <td>${statusBadges[req.status]}</td>
-                        <td><strong>${formatCurrency(req.amount)}</strong></td>
+                        <td>${req.request_number}</td>
+                        <td>
+                            <div class="user-cell">
+                                <div class="avatar">${getInitials(req.customer?.full_name)}</div>
+                                <div class="user-info">
+                                    <div class="user-name">${req.customer?.full_name || 'Customer'}</div>
+                                    <div class="user-email">${req.customer?.phone || ''}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            ${req.footman ? `
+                                <div class="user-cell">
+                                    <div class="avatar">${getInitials(req.footman.full_name)}</div>
+                                    <div class="user-info">
+                                        <div class="user-name">${req.footman.full_name}</div>
+                                        <div class="user-email">${req.footman.phone}</div>
+                                    </div>
+                                </div>
+                            ` : '-'}
+                        </td>
+                        <td>${statusBadges[req.request_status] || '<span class="status-badge">❓ Unknown</span>'}</td>
+                        <td><strong>${formatCurrency(req.base_price)}</strong></td>
                         <td>${formatCurrency(req.commission)}</td>
-                        <td>${methodBadges[req.method]}</td>
-                        <td>${formatDateTime(req.created)}</td>
+                        <td>${methodBadges[req.customer_selected_payment] || '<span class="status-badge">❓ Unknown</span>'}</td>
+                        <td>${formatDateTime(req.created_at)}</td>
                         <td>
                             <button class="btn btn-primary btn-sm" onclick="viewRequestDetails(${req.id})">
                                 👁️ View
@@ -2739,86 +2922,112 @@
 
         async function loadEarnings() {
             try {
-                // Calculate earnings from mock requests
-                const mockRequests = [];
-                let totalRevenue = 0;
-                let totalCommission = 0;
-                
-                for (let i = 0; i < 182; i++) {
-                    const amount = Math.random() > 0.5 ? 100 : 50;
-                    const commission = amount * 0.1;
-                    totalRevenue += amount;
-                    totalCommission += commission;
+                // Get real requests data
+                const requests = await apiRequest('/admin/requests?limit=200');
+                if (!requests?.success) {
+                    showToast('Failed to load earnings data', 'error');
+                    return;
                 }
+
+                const allRequests = requests.data.requests;
+                const totals = requests.data.totals;
                 
+                // Use totals from API
+                const totalRevenue = totals?.total_revenue || 0;
+                const totalCommission = totals?.total_commission || 0;
+                const partnerEarnings = totals?.partner_earnings || (totalRevenue - totalCommission);
+                const totalRequests = totals?.total_requests || 0;
+                const avgPerRequest = totalRequests > 0 ? totalRevenue / totalRequests : 0;
+                const avgCommission = totalRequests > 0 ? totalCommission / totalRequests : 0;
+                
+                // Update earnings stats
                 document.getElementById('earningsRevenue').textContent = formatCurrency(totalRevenue);
                 document.getElementById('totalCommission').textContent = formatCurrency(totalCommission);
-                document.getElementById('partnerEarnings').textContent = formatCurrency(totalRevenue - totalCommission);
-                document.getElementById('avgPerRequest').textContent = formatCurrency(totalRevenue / 182);
+                document.getElementById('partnerEarnings').textContent = formatCurrency(partnerEarnings);
+                document.getElementById('avgPerRequest').textContent = formatCurrency(avgPerRequest);
                 
-                // Payment methods breakdown
+                // Calculate payment method breakdown from REAL data
+                const paymentMethods = {};
+                allRequests.forEach(req => {
+                    if (req.request_status === 'completed' && req.customer_selected_payment) {
+                        const method = req.customer_selected_payment;
+                        if (!paymentMethods[method]) {
+                            paymentMethods[method] = { count: 0, amount: 0, commission: 0 };
+                        }
+                        paymentMethods[method].count++;
+                        paymentMethods[method].amount += parseFloat(req.base_price || 0);
+                        paymentMethods[method].commission += parseFloat(req.commission || 0);
+                    }
+                });
+                
+                // Render payment methods table
                 const paymentsTable = document.getElementById('paymentsTable');
-                const methods = [
-                    { method: 'Cash', count: 92, amount: 9200, commission: 920 },
-                    { method: 'bKash', count: 65, amount: 6500, commission: 650 },
-                    { method: 'Nagad', count: 25, amount: 2500, commission: 250 }
-                ];
+                const paymentMethodsArray = Object.entries(paymentMethods);
                 
-                paymentsTable.innerHTML = methods.map(m => `
-                    <tr>
-                        <td><strong>${m.method}</strong></td>
-                        <td>${m.count}</td>
-                        <td><strong>${formatCurrency(m.amount)}</strong></td>
-                        <td>${formatCurrency(m.commission)}</td>
-                        <td>${((m.amount / totalRevenue) * 100).toFixed(1)}%</td>
-                    </tr>
-                `).join('');
-                
-                // Recent transactions
-                const transactionsTable = document.getElementById('transactionsTable');
-                const transactions = [];
-                
-                for (let i = 0; i < 10; i++) {
-                    const amount = Math.random() > 0.5 ? 100 : 50;
-                    const commission = amount * 0.1;
-                    const method = ['Cash', 'bKash', 'Nagad'][Math.floor(Math.random() * 3)];
-                    const status = ['completed', 'pending', 'failed'][Math.floor(Math.random() * 3)];
-                    
-                    transactions.push({
-                        date: new Date(Date.now() - i * 2 * 60 * 60 * 1000).toISOString(),
-                        id: 180 - i,
-                        customer: `Customer ${i + 1}`,
-                        partner: `Partner ${Math.ceil(Math.random() * 5)}`,
-                        amount,
-                        commission,
-                        method,
-                        status
-                    });
-                }
-                
-                transactionsTable.innerHTML = transactions.map(t => {
-                    const statusBadges = {
-                        completed: '<span class="status-badge status-completed">✅ Completed</span>',
-                        pending: '<span class="status-badge status-pending">⏳ Pending</span>',
-                        failed: '<span class="status-badge status-inactive">❌ Failed</span>'
-                    };
-                    
-                    return `
+                if (paymentMethodsArray.length === 0) {
+                    paymentsTable.innerHTML = `
                         <tr>
-                            <td>${formatDateTime(t.date)}</td>
-                            <td>#REQ${t.id.toString().padStart(6, '0')}</td>
-                            <td>${t.customer}</td>
-                            <td>${t.partner}</td>
-                            <td><strong>${formatCurrency(t.amount)}</strong></td>
-                            <td>${formatCurrency(t.commission)}</td>
-                            <td>${t.method}</td>
-                            <td>${statusBadges[t.status]}</td>
+                            <td colspan="5" class="empty-state">
+                                <div class="empty-icon">💰</div>
+                                <div class="empty-title">No payment data</div>
+                                <div class="empty-description">No completed payments yet.</div>
+                            </td>
                         </tr>
                     `;
-                }).join('');
+                } else {
+                    paymentsTable.innerHTML = paymentMethodsArray.map(([method, data]) => `
+                        <tr>
+                            <td><strong>${method.charAt(0).toUpperCase() + method.slice(1)}</strong></td>
+                            <td>${data.count}</td>
+                            <td><strong>${formatCurrency(data.amount)}</strong></td>
+                            <td>${formatCurrency(data.commission)}</td>
+                            <td>${totalRevenue > 0 ? ((data.amount / totalRevenue) * 100).toFixed(1) : 0}%</td>
+                        </tr>
+                    `).join('');
+                }
+                
+                // Render recent transactions
+                const transactionsTable = document.getElementById('transactionsTable');
+                const recentRequests = allRequests
+                    .filter(req => req.request_status === 'completed')
+                    .slice(0, 10);
+                
+                if (recentRequests.length === 0) {
+                    transactionsTable.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="empty-state">
+                                <div class="empty-icon">📭</div>
+                                <div class="empty-title">No transactions</div>
+                                <div class="empty-description">No completed transactions yet.</div>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    transactionsTable.innerHTML = recentRequests.map(req => {
+                        const methodBadges = {
+                            cash: '<span class="status-badge">💰 Cash</span>',
+                            bkash: '<span class="status-badge" style="background:#E2136E;color:white;">bKash</span>',
+                            nagad: '<span class="status-badge" style="background:#E30A17;color:white;">Nagad</span>'
+                        };
+                        
+                        return `
+                            <tr>
+                                <td>${formatDate(req.completed_at || req.created_at)}</td>
+                                <td>${req.request_number}</td>
+                                <td>${req.customer?.full_name || 'Customer'}</td>
+                                <td>${req.footman?.full_name || '-'}</td>
+                                <td><strong>${formatCurrency(req.base_price)}</strong></td>
+                                <td>${formatCurrency(req.commission)}</td>
+                                <td>${methodBadges[req.customer_selected_payment] || '<span class="status-badge">❓ Unknown</span>'}</td>
+                                <td><span class="status-badge status-completed">✅ Completed</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
                 
             } catch (error) {
                 console.error('Earnings load error:', error);
+                showToast('Failed to load earnings data', 'error');
             }
         }
 
@@ -2853,8 +3062,7 @@
             }
             
             tbody.innerHTML = partners.map(partner => {
-                const hasCurrentJob = Math.random() > 0.5;
-                const rating = (3 + Math.random() * 2).toFixed(1);
+                const rating = partner.rating || 'N/A';
                 
                 return `
                     <tr>
@@ -2875,20 +3083,17 @@
                             <span class="status-badge status-online">🟢 Online</span>
                         </td>
                         <td>
-                            ${hasCurrentJob ? 
-                                `<span class="status-badge status-ongoing">🚚 On Delivery</span>` :
-                                '<span class="status-badge status-active">✅ Available</span>'}
+                            <span class="status-badge status-active">✅ Available</span>
                         </td>
                         <td>
-                            <span class="text-muted">📍 Location data needed</span>
+                            <span class="text-muted">📍 GPS tracking needed</span>
                         </td>
                         <td>
                             <div class="d-flex align-center gap-2">
                                 <span>${rating}/5</span>
-                                <small class="text-muted">(${Math.floor(Math.random() * 50)} reviews)</small>
                             </div>
                         </td>
-                        <td>${formatTimeAgo(partner.last_active || partner.updated_at)}</td>
+                        <td>${formatTimeAgo(partner.last_location_update || partner.updated_at)}</td>
                         <td>
                             <button class="btn btn-primary btn-sm" onclick="viewPartnerDetails(${partner.id})">
                                 👁️ View
@@ -3317,6 +3522,112 @@
             window.open(url, '_blank');
         }
 
+        async function viewRequestDetails(requestId) {
+            try {
+                const requests = await apiRequest('/admin/requests?limit=200');
+                if (!requests?.success) return;
+                
+                const request = requests.data.requests.find(r => r.id === requestId);
+                if (!request) {
+                    showToast('Request not found', 'error');
+                    return;
+                }
+                
+                document.getElementById('requestTitle').textContent = `Request ${request.request_number}`;
+                
+                const requestBody = document.getElementById('requestBody');
+                requestBody.innerHTML = `
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Request Number</span>
+                            <div class="detail-value">${request.request_number}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status</span>
+                            <div class="detail-value">
+                                ${request.request_status === 'completed' ? 
+                                    '<span class="status-badge status-completed">✅ Completed</span>' :
+                                    request.request_status === 'cancelled' ?
+                                    '<span class="status-badge status-inactive">❌ Cancelled</span>' :
+                                    '<span class="status-badge status-pending">⏳ Pending</span>'}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Customer</span>
+                            <div class="detail-value">
+                                ${request.customer?.full_name || 'Unknown'}<br>
+                                <small>${request.customer?.phone || ''}</small>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Delivery Partner</span>
+                            <div class="detail-value">
+                                ${request.footman?.full_name || 'Not assigned'}<br>
+                                <small>${request.footman?.phone || ''}</small>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Total Amount</span>
+                            <div class="detail-value">${formatCurrency(request.base_price)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Your Commission (10%)</span>
+                            <div class="detail-value">${formatCurrency(request.commission)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Partner Earnings (90%)</span>
+                            <div class="detail-value">${formatCurrency(request.footman_earnings)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Payment Method</span>
+                            <div class="detail-value">
+                                ${request.customer_selected_payment ? 
+                                    `<span class="status-badge">${request.customer_selected_payment.charAt(0).toUpperCase() + request.customer_selected_payment.slice(1)}</span>` : 
+                                    'Not selected'}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Created</span>
+                            <div class="detail-value">${formatDateTime(request.created_at)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Completed</span>
+                            <div class="detail-value">${request.completed_at ? formatDateTime(request.completed_at) : 'Not completed'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <h3 style="margin-bottom: 16px;">Location Details</h3>
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Pickup Location</span>
+                                <div class="detail-value">
+                                    Latitude: ${request.pickup_lat}<br>
+                                    Longitude: ${request.pickup_lng}
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Distance</span>
+                                <div class="detail-value">${request.distance_km} KM</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('requestFooter').innerHTML = `
+                    <button class="btn btn-secondary" onclick="document.getElementById('requestModal').classList.remove('show')">
+                        Close
+                    </button>
+                `;
+                
+                document.getElementById('requestModal').classList.add('show');
+                
+            } catch (error) {
+                console.error('Error viewing request:', error);
+                showToast('Failed to load request details', 'error');
+            }
+        }
+
         async function approveUser(userId, fromModal = false) {
             if (!confirm('Are you sure you want to approve this user?')) return;
             
@@ -3330,6 +3641,7 @@
                     showToast('User approved successfully!', 'success');
                     if (fromModal) {
                         document.getElementById('userModal').classList.remove('show');
+                        document.getElementById('documentsModal').classList.remove('show');
                     }
                     loadPageData(State.currentPage);
                 }
@@ -3377,104 +3689,20 @@
             }
         }
 
-        function viewRequestDetails(requestId) {
-            // Mock request details
-            document.getElementById('requestTitle').textContent = `Request #REQ${requestId.toString().padStart(6, '0')}`;
-            
-            const requestBody = document.getElementById('requestBody');
-            requestBody.innerHTML = `
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">Request ID</span>
-                        <div class="detail-value">#REQ${requestId.toString().padStart(6, '0')}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Status</span>
-                        <div class="detail-value">
-                            <span class="status-badge status-completed">✅ Completed</span>
-                        </div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Customer</span>
-                        <div class="detail-value">Customer ${requestId % 10 + 1}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Delivery Partner</span>
-                        <div class="detail-value">Partner ${Math.ceil(Math.random() * 5)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Total Amount</span>
-                        <div class="detail-value">${formatCurrency(100)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Your Commission (10%)</span>
-                        <div class="detail-value">${formatCurrency(10)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Partner Earnings (90%)</span>
-                        <div class="detail-value">${formatCurrency(90)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Payment Method</span>
-                        <div class="detail-value">
-                            <span class="status-badge">💰 Cash</span>
-                        </div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Created</span>
-                        <div class="detail-value">${formatDateTime(new Date().toISOString())}</div>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Completed</span>
-                        <div class="detail-value">${formatDateTime(new Date().toISOString())}</div>
-                    </div>
-                </div>
-                
-                <div class="mt-3">
-                    <h3 style="margin-bottom: 16px;">Location Details</h3>
-                    <div class="details-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Pickup Location</span>
-                            <div class="detail-value">Customer's location (Lat: 23.81, Lng: 90.41)</div>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Delivery Location</span>
-                            <div class="detail-value">Destination point (Lat: 23.82, Lng: 90.42)</div>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Distance</span>
-                            <div class="detail-value">0.8 KM (≤1KM rate applied)</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('requestFooter').innerHTML = `
-                <button class="btn btn-secondary" onclick="document.getElementById('requestModal').classList.remove('show')">
-                    Close
-                </button>
-            `;
-            
-            document.getElementById('requestModal').classList.add('show');
-        }
-
         function verifyDocument(url) {
-            showToast('Document marked as verified', 'success');
-            // In real app, you would update the document status via API
+            showToast('Document verification feature requires backend implementation', 'info');
         }
 
         // ========== INITIALIZATION ==========
         function initApp() {
-            if (!initAuth()) return;
-            
             setupNavigation();
             updateAdminInfo();
             loadDashboard();
             
-            // Set up auto-refresh
+            // Set up auto-refresh for dashboard
             setInterval(() => {
-                if (State.currentPage === 'dashboard' || State.currentPage === 'online') {
-                    loadPageData(State.currentPage);
+                if (State.currentPage === 'dashboard') {
+                    loadDashboard();
                 }
             }, Config.REFRESH_INTERVAL);
             
@@ -3492,31 +3720,12 @@
                 const avatar = getInitials(State.currentUser.full_name || 'Admin');
                 document.getElementById('adminAvatar').textContent = avatar;
                 document.getElementById('topbarAvatar').textContent = avatar;
+                document.getElementById('loginPhone').value = State.currentUser.phone || '01700000000';
             }
         }
 
-        function showMockDashboard() {
-            // Mock data for demo
-            document.getElementById('totalRevenue').textContent = '৳ 18,200';
-            document.getElementById('totalUsers').textContent = '15';
-            document.getElementById('totalRequests').textContent = '182';
-            document.getElementById('totalPartners').textContent = '5';
-            document.getElementById('onlinePartners').textContent = '2';
-            document.getElementById('todayRequests').textContent = '12';
-            document.getElementById('onlineUsers').textContent = '2';
-            
-            // Update badges
-            document.getElementById('usersBadge').textContent = '15';
-            document.getElementById('partnersBadge').textContent = '5';
-            document.getElementById('customersBadge').textContent = '9';
-            document.getElementById('onlineBadge').textContent = '2';
-            document.getElementById('pendingBadge').textContent = '3';
-            document.getElementById('requestsBadge').textContent = '182';
-        }
-
         // Start the application
-        document.addEventListener('DOMContentLoaded', initApp);
+        document.addEventListener('DOMContentLoaded', initAuth);
     </script>
 </body>
 </html>
-// FORCE DEPLOYMENT UPDATE Tue Jan 20 07:03:13 +06 2026
