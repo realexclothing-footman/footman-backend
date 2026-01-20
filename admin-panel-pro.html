@@ -2044,7 +2044,46 @@
                 loginBtn.disabled = false;
             }
         }
-
+        async function login(phone, password) {
+            const loginBtn = document.getElementById("loginBtn");
+            const originalText = loginBtn.textContent;
+            const errorDisplay = document.getElementById("loginError");
+            
+            try {
+                loginBtn.textContent = "Logging in...";
+                loginBtn.disabled = true;
+                errorDisplay.style.display = "none";
+                
+                const response = await fetch(`${Config.API_BASE}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.data.token) {
+                    State.token = data.data.token;
+                    State.currentUser = data.data.user;
+                    
+                    localStorage.setItem(Config.TOKEN_KEY, State.token);
+                    localStorage.setItem(Config.USER_KEY, JSON.stringify(data.data.user));
+                    
+                    showToast("Login successful!", "success");
+                    showApp();
+                    loadDashboard();
+                } else {
+                    throw new Error(data.message || "Login failed");
+                }
+            } catch (error) {
+                errorDisplay.textContent = error.message;
+                errorDisplay.style.display = "block";
+                showToast(error.message, "error");
+            } finally {
+                loginBtn.textContent = originalText;
+                loginBtn.disabled = false;
+            }
+        }
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 State.token = null;
