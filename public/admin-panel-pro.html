@@ -2250,10 +2250,10 @@
         }
 
         function updateDashboardStats(stats) {
-            document.getElementById('totalRevenue').textContent = formatCurrency(stats.estimated_revenue || 0);
-            document.getElementById('totalRequests').textContent = stats.total_orders || 0;
-            document.getElementById('todayRequests').textContent = stats.today_orders || 0;
-        }
+            document.getElementById("totalRevenue").textContent = formatCurrency(stats.total_revenue || stats.estimated_revenue || 0);
+            document.getElementById("totalRequests").textContent = stats.total_requests || stats.total_orders || 0;
+            document.getElementById("todayRequests").textContent = stats.today_requests || stats.today_orders || 0;
+        }        }
 
         function updateUserCounts(users) {
             const totalUsers = users.length;
