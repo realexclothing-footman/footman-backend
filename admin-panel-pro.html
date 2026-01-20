@@ -3694,6 +3694,32 @@
             }
         }
 
+
+        // Attach login button immediately when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginBtn = document.getElementById('loginBtn');
+            if (loginBtn) {
+                loginBtn.addEventListener('click', () => {
+                    const phone = document.getElementById('loginPhone').value;
+                    const password = document.getElementById('loginPassword').value;
+                    if (!phone || !password) {
+                        const errorDisplay = document.getElementById('loginError');
+                        errorDisplay.textContent = 'Please enter phone and password';
+                        errorDisplay.style.display = 'block';
+                        return;
+                    }
+                    login(phone, password);
+                });
+                
+                // Enter key in login form
+                document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        loginBtn.click();
+                    }
+                });
+            }
+        });
+        
         // Start the application
         document.addEventListener('DOMContentLoaded', initAuth);
     </script>
