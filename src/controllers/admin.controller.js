@@ -237,9 +237,10 @@ exports.getAllRequests = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
-    // Calculate totals
-    const totalRevenue = requests.reduce((sum, req) => sum + parseFloat(req.base_price || 0), 0);
-    const totalCommission = requests.reduce((sum, req) => sum + parseFloat(req.commission || 0), 0);
+    // Calculate totals ONLY from completed requests
+    const completedRequests = requests.filter(req => req.request_status === "completed");
+    const totalRevenue = completedRequests.reduce((sum, req) => sum + parseFloat(req.base_price || 0), 0);
+    const totalCommission = completedRequests.reduce((sum, req) => sum + parseFloat(req.commission || 0), 0);
 
     res.status(200).json({
       success: true,
