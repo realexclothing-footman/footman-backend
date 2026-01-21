@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Request = require('../models/Request');
@@ -117,8 +117,6 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
-
-
 // Get revenue data grouped by date (for charts)
 exports.getRevenueTimeSeries = async (req, res) => {
   try {
@@ -155,12 +153,12 @@ exports.getRevenueTimeSeries = async (req, res) => {
         }
       },
       attributes: [
-        [sequelize.fn('DATE', sequelize.col('created_at')), 'date'],
-        [sequelize.fn('SUM', sequelize.col('base_price')), 'daily_revenue'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'request_count']
+        [Sequelize.fn('DATE', Sequelize.col('created_at')), 'date'],
+        [Sequelize.fn('SUM', Sequelize.col('base_price')), 'daily_revenue'],
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'request_count']
       ],
-      group: [sequelize.fn('DATE', sequelize.col('created_at'))],
-      order: [[sequelize.fn('DATE', sequelize.col('created_at')), 'ASC']],
+      group: [Sequelize.fn('DATE', Sequelize.col('created_at'))],
+      order: [[Sequelize.fn('DATE', Sequelize.col('created_at')), 'ASC']],
       raw: true
     });
     
@@ -192,6 +190,7 @@ exports.getRevenueTimeSeries = async (req, res) => {
     });
   }
 };
+
 exports.getAllUsers = async (req, res) => {
   try {
     const { user_type, page = 1, limit = 20 } = req.query;
