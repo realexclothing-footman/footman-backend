@@ -117,6 +117,81 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
+
+
+// Get revenue data grouped by date (for charts)
+exports.getRevenueTimeSeries = async (req, res) => {
+  try {
+    const { period = '7days' } = req.query;
+    
+    // Calculate date range based on period
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    switch(period) {
+      case '7days':
+        startDate.setDate(endDate.getDate() - 7);
+        break;
+      case '30days':
+        startDate.setDate(endDate.getDate() - 30);
+        break;
+      case '90days':
+        startDate.setDate(endDate.getDate() - 90);
+        break;
+      default:
+        startDate.setDate(endDate.getDate() - 7);
+    }
+    
+    // Format dates for database query
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
+    // Query to get completed requests grouped by date
+    const revenueByDate = await Request.findAll({
+      where: {
+        request_status: 'completed',
+        created_at: {
+          [Op.between]: [startDate, endDate]
+        }
+      },
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('created_at')), 'date'],
+        [sequelize.fn('SUM', sequelize.col('base_price')), 'daily_revenue'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'request_count']
+      ],
+      group: [sequelize.fn('DATE', sequelize.col('created_at'))],
+      order: [[sequelize.fn('DATE', sequelize.col('created_at')), 'ASC']],
+      raw: true
+    });
+    
+    // Format response
+    const formattedData = revenueByDate.map(item => ({
+      date: item.date,
+      revenue: parseFloat(item.daily_revenue) || 0,
+      requests: parseInt(item.request_count) || 0
+    }));
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        period,
+        start_date: startDateStr,
+        end_date: endDateStr,
+        revenue_data: formattedData,
+        total_revenue: formattedData.reduce((sum, item) => sum + item.revenue, 0),
+        total_requests: formattedData.reduce((sum, item) => sum + item.requests, 0)
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get revenue time series error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch revenue time series',
+      error: error.message
+    });
+  }
+};
 exports.getAllUsers = async (req, res) => {
   try {
     const { user_type, page = 1, limit = 20 } = req.query;

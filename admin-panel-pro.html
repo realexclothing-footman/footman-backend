@@ -1169,7 +1169,8 @@
         .text-warning { color: var(--warning); }
         .text-muted { color: var(--secondary); }
     </style>
-</head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
 <body>
     <!-- Login Screen (Shows first if not logged in) -->
     <div class="login-screen" id="loginScreen">
@@ -1364,17 +1365,14 @@
                         <div class="chart-card">
                             <div class="chart-header">
                                 <h3 class="chart-title">Revenue Overview</h3>
-                                <select class="filter-select" id="revenuePeriod">
+                                <select class="filter-select" id="revenuePeriod" onchange="updateChartPeriod()">
                                     <option value="7days">Last 7 Days</option>
                                     <option value="30days">Last 30 Days</option>
                                     <option value="90days">Last 90 Days</option>
                                 </select>
                             </div>
                             <div class="chart-container" id="revenueChart">
-                                <div class="loading">
-                                    <div class="loading-spinner"></div>
-                                    <p>Loading revenue data...</p>
-                                </div>
+
                             </div>
                         </div>
 
@@ -1383,10 +1381,7 @@
                                 <h3 class="chart-title">Request Status</h3>
                             </div>
                             <div class="chart-container" id="requestsChart">
-                                <div class="loading">
-                                    <div class="loading-spinner"></div>
-                                    <p>Loading request data...</p>
-                                </div>
+
                             </div>
                         </div>
                     </div>
@@ -2394,6 +2389,11 @@
             
             // Update badges with real data
             document.getElementById('requestsBadge').textContent = stats.total_requests || 0;
+            
+            // Render REAL charts with real data
+            renderRequestStatusChart(stats);
+            // Load revenue chart (async)
+            renderRevenueChart(stats);
         }
 
         function updateUserCounts(users) {
@@ -2420,6 +2420,246 @@
             State.data.partners = partners;
             State.data.customers = customers;
         }
+        // Chart instances
+        let revenueChart = null;
+        let requestStatusChart = null;
+
+        async function loadRevenueTimeSeries(period = '7days') {
+            try {
+                const response = await apiRequest(`/admin/revenue-timeseries?period=${period}`);
+                if (response?.success) {
+                    return response.data;
+                }
+                return null;
+            } catch (error) {
+                console.error('Failed to load revenue time series:', error);
+                return null;
+            }
+        }
+
+        async function renderRevenueChart(stats) {
+            const ctx = document.getElementById('revenueChart').getContext('2d');
+            const period = document.getElementById('revenuePeriod').value;
+            
+            // Load REAL time-series data
+            const timeSeriesData = await loadRevenueTimeSeries(period);
+            
+            if (revenueChart) {
+                revenueChart.destroy();
+            }
+            
+            if (timeSeriesData?.revenue_data?.length > 0) {
+                const labels = timeSeriesData.revenue_data.map(item => {
+                    const date = new Date(item.date);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                
+                const revenueData = timeSeriesData.revenue_data.map(item => item.revenue);
+                const requestCounts = timeSeriesData.revenue_data.map(item => item.requests);
+                
+                revenueChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Revenue',
+                                data: revenueData,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'Requests',
+                                data: requestCounts,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.4,
+                                yAxisID: 'y1',
+                                hidden: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        stacked: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        if (context.datasetIndex === 0) {
+                                            return `Revenue: ৳${context.parsed.y.toLocaleString()}`;
+                                        } else {
+                                            return `Requests: ${context.parsed.y}`;
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Revenue (৳)'
+                                },
+                                ticks: {
+                                    callback: function(value) {
+                                        return '৳' + value.toLocaleString();
+                                    }
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: false,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Requests'
+                                },
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Fallback to total revenue if no time-series data
+                const revenue = stats.total_revenue || 0;
+                revenueChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Total Revenue'],
+                        datasets: [{
+                            label: 'Revenue',
+                            data: [revenue],
+                            backgroundColor: '#10b981',
+                            borderColor: '#059669',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Total Revenue: ৳' + context.parsed.y.toLocaleString();
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return '৳' + value.toLocaleString();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function renderRequestStatusChart(stats) {
+            const ctx = document.getElementById('requestsChart').getContext('2d');
+            
+            // REAL DATA from API
+            const statusBreakdown = stats.status_breakdown || {};
+            const labels = Object.keys(statusBreakdown);
+            const data = Object.values(statusBreakdown);
+            
+            if (labels.length === 0) {
+                return;
+            }
+            
+            const colors = {
+                'completed': '#10b981',
+                'cancelled': '#ef4444',
+                'searching': '#3b82f6',
+                'accepted': '#f59e0b',
+                'picked_up': '#8b5cf6',
+                'pending': '#64748b'
+            };
+            
+            const backgroundColors = labels.map(label => colors[label] || '#94a3b8');
+            
+            if (requestStatusChart) {
+                requestStatusChart.destroy();
+            }
+            
+            requestStatusChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels.map(label => label.charAt(0).toUpperCase() + label.slice(1)),
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true,
+                                font: { size: 12 }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value} requests (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function updateChartPeriod() {
+            const period = document.getElementById('revenuePeriod').value;
+            // Reload revenue chart with new period
+            const stats = await apiRequest('/admin/dashboard');
+            if (stats?.success) {
+                await renderRevenueChart(stats.data.stats);
+            }
+        }
+
 
         async function updateRecentActivity() {
             try {

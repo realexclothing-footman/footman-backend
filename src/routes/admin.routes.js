@@ -9,6 +9,7 @@ router.use(adminController.isAdmin);
 
 // Admin routes
 router.get('/dashboard', adminController.getDashboardStats);
+router.get('/revenue-timeseries', adminController.getRevenueTimeSeries);
 router.get('/users', adminController.getAllUsers);
 router.get('/orders', adminController.getAllOrders);
 router.get('/requests', adminController.getAllRequests);
