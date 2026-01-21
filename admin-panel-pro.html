@@ -1654,9 +1654,9 @@
                                 </div>
                                 <select class="filter-select" id="requestStatusFilter" onchange="filterRequests()">
                                     <option value="">All Status</option>
-                                    <option value="pending">Pending</option>
                                     <option value="searching">Searching</option>
                                     <option value="accepted">Accepted</option>
+                                    <option value="accepted_by_partner">Accepted by Partner</option>
                                     <option value="ongoing">Ongoing</option>
                                     <option value="completed">Completed</option>
                                     <option value="cancelled">Cancelled</option>
@@ -2461,7 +2461,7 @@
                             <div style="padding: 10px;">
                                 <strong>${partner.full_name}</strong><br>
                                 Phone: ${partner.phone}<br>
-                                Rating: ${partner.rating}/5<br>
+                                Rating: ${partner.rating || 0}/5<br>
                                 Active Jobs: ${partner.active_jobs || 0}<br>
                                 Last Update: ${formatTimeAgo(partner.last_location_update)}
                             </div>
@@ -2718,7 +2718,8 @@
                         cancelled: '<span class="status-badge status-inactive">❌ Cancelled</span>',
                         searching: '<span class="status-badge status-pending">🔍 Searching</span>',
                         accepted: '<span class="status-badge status-active">✅ Accepted</span>',
-                        pending: '<span class="status-badge status-pending">⏳ Pending</span>'
+                        accepted_by_partner: '<span class="status-badge status-active">✅ Accepted by Partner</span>',
+                        ongoing: '<span class="status-badge status-ongoing">🔄 Ongoing</span>'
                     };
                     
                     return `
@@ -2939,6 +2940,15 @@
                 }
             } catch (error) {
                 console.error('Partners load error:', error);
+                document.getElementById('partnersTable').innerHTML = `
+                    <tr>
+                        <td colspan="8" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load partners</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -2995,7 +3005,7 @@
                     '<span class="status-badge status-offline">⚫ Offline</span>';
                 
                 const locationInfo = hasLocation ? 
-                    `<small class="text-success">📍 ${partner.latitude.toFixed(4)}, ${partner.longitude.toFixed(4)}</small>` :
+                    `<small class="text-success">📍 ${parseFloat(partner.latitude).toFixed(4)}, ${parseFloat(partner.longitude).toFixed(4)}</small>` :
                     '<small class="text-muted">📍 No GPS</small>';
                 
                 return `
@@ -3126,6 +3136,15 @@
                 }
             } catch (error) {
                 console.error('Customers load error:', error);
+                document.getElementById('customersTable').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load customers</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -3213,6 +3232,15 @@
                 }
             } catch (error) {
                 console.error('Requests load error:', error);
+                document.getElementById('requestsTable').innerHTML = `
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load requests</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -3261,7 +3289,7 @@
                     cancelled: '<span class="status-badge status-inactive">❌ Cancelled</span>',
                     searching: '<span class="status-badge status-pending">🔍 Searching</span>',
                     accepted: '<span class="status-badge status-active">✅ Accepted</span>',
-                    pending: '<span class="status-badge status-pending">⏳ Pending</span>',
+                    accepted_by_partner: '<span class="status-badge status-active">✅ Accepted by Partner</span>',
                     ongoing: '<span class="status-badge status-ongoing">🔄 Ongoing</span>'
                 };
                 
@@ -3435,6 +3463,15 @@
                 }
             } catch (error) {
                 console.error('Online partners load error:', error);
+                document.getElementById('onlineTable').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load online partners</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -3461,15 +3498,10 @@
             
             tbody.innerHTML = partners.map(partner => {
                 const hasLocation = partner.latitude && partner.longitude;
-                const locationAge = partner.location_age;
                 
                 const locationStatus = hasLocation ? 
-                    `<span class="text-success">📍 ${partner.latitude.toFixed(4)}, ${partner.longitude.toFixed(4)}</span>` :
+                    `<span class="text-success">📍 ${parseFloat(partner.latitude).toFixed(4)}, ${parseFloat(partner.longitude).toFixed(4)}</span>` :
                     '<span class="text-muted">📍 No GPS</span>';
-                
-                const updateStatus = locationAge !== null ? 
-                    `<small class="text-muted">${locationAge} min ago</small>` :
-                    '<small class="text-muted">Never updated</small>';
                 
                 return `
                     <tr>
@@ -3496,7 +3528,7 @@
                         </td>
                         <td>
                             <div>${locationStatus}</div>
-                            <div>${updateStatus}</div>
+                            <div><small class="text-muted">${partner.location_age ? partner.location_age + ' min ago' : 'Never updated'}</small></div>
                         </td>
                         <td>${formatTimeAgo(partner.last_location_update)}</td>
                         <td>${partner.rating || 'N/A'}/5</td>
@@ -3527,6 +3559,15 @@
                 }
             } catch (error) {
                 console.error('Pending approvals load error:', error);
+                document.getElementById('pendingTable').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load pending approvals</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -3635,6 +3676,15 @@
                 }
             } catch (error) {
                 console.error('Document verification load error:', error);
+                document.getElementById('documentsListView').innerHTML = `
+                    <tr>
+                        <td colspan="8" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load documents</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
             }
         }
 
@@ -3698,7 +3748,7 @@
                         </td>
                         <td>
                             <div>${partner.phone}</div>
-                            <small class="text-muted">ID: ${partner.id}</small>
+                            <small class="text-muted">Emergency: ${partner.emergency_contact_phone || 'Not provided'}</small>
                         </td>
                         <td>
                             ${profileDoc ? 
@@ -3942,6 +3992,17 @@
                         <div class="detail-item">
                             <span class="detail-label">NID Number</span>
                             <div class="detail-value">${partner.nid_number || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Emergency Contact</span>
+                            <div class="detail-value">
+                                ${partner.emergency_contact_name || 'N/A'} (${partner.emergency_contact_relationship || 'N/A'})<br>
+                                <small>${partner.emergency_contact_phone || 'No phone'}</small>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Address</span>
+                            <div class="detail-value">${partner.address || 'N/A'}</div>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Verification Status</span>

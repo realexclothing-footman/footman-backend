@@ -52,7 +52,7 @@ exports.getDashboardStats = async (req, res) => {
       }
     });
 
-    // Calculate REAL revenue from requests
+    // Calculate REAL revenue from ALL completed requests
     const completedRequests = await Request.findAll({
       where: { request_status: 'completed' },
       attributes: ['base_price', 'commission']
@@ -200,7 +200,7 @@ exports.getRevenueTimeSeries = async (req, res) => {
   }
 };
 
-// Get online partners with GPS locations
+// Get online partners with GPS locations - UPDATED WITH CORRECT FIELD NAMES
 exports.getOnlinePartners = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
@@ -215,7 +215,8 @@ exports.getOnlinePartners = async (req, res) => {
       },
       attributes: ['id', 'full_name', 'phone', 'latitude', 'longitude', 
                    'last_location_update', 'is_online', 'rating', 
-                   'total_completed_jobs', 'created_at'],
+                   'total_completed_jobs', 'created_at', 'profile_image_url',
+                   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship'],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [['last_location_update', 'DESC']]
@@ -226,13 +227,26 @@ exports.getOnlinePartners = async (req, res) => {
       partners.map(async (partner) => {
         const activeJobs = await Request.count({
           where: {
-            footman_id: partner.id,
-            request_status: ['accepted', 'ongoing']
+            assigned_footman_id: partner.id,
+            request_status: { [Op.in]: ['searching', 'accepted', 'accepted_by_partner', 'ongoing'] }
           }
         });
 
         return {
-          ...partner.toJSON(),
+          id: partner.id,
+          full_name: partner.full_name,
+          phone: partner.phone,
+          latitude: partner.latitude,
+          longitude: partner.longitude,
+          last_location_update: partner.last_location_update,
+          is_online: partner.is_online,
+          rating: partner.rating,
+          total_completed_jobs: partner.total_completed_jobs,
+          created_at: partner.created_at,
+          profile_image_url: partner.profile_image_url,
+          emergency_contact_name: partner.emergency_contact_name,
+          emergency_contact_phone: partner.emergency_contact_phone,
+          emergency_contact_relationship: partner.emergency_contact_relationship,
           active_jobs: activeJobs,
           location_age: partner.last_location_update 
             ? Math.floor((new Date() - new Date(partner.last_location_update)) / 60000)
@@ -275,14 +289,14 @@ exports.getAllUsers = async (req, res) => {
       where.user_type = user_type;
     }
     
-    // Status filter (is_active)
+    // Status filter (is_active) - SIMPLIFIED: only active/inactive
     if (status === 'active') {
       where.is_active = true;
     } else if (status === 'inactive') {
       where.is_active = false;
     } else if (status === 'pending') {
-      where.is_active = false;
       where.user_type = 'delivery';
+      where.is_active = false;
     }
     
     // Online status filter
@@ -292,19 +306,21 @@ exports.getAllUsers = async (req, res) => {
       where.is_online = false;
     }
     
-    // Search filter
+    // Search filter - SIMPLIFIED: only name and phone
     if (search) {
       where[Op.or] = [
         { full_name: { [Op.iLike]: `%${search}%` } },
-        { phone: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } },
-        { nid_number: { [Op.iLike]: `%${search}%` } }
+        { phone: { [Op.iLike]: `%${search}%` } }
       ];
     }
 
     const { count, rows: users } = await User.findAndCountAll({
       where,
-      attributes: { exclude: ['password_hash'] },
+      attributes: ['id', 'full_name', 'phone', 'email', 'user_type', 'is_active', 'is_online',
+                   'nid_number', 'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
+                   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+                   'latitude', 'longitude', 'last_location_update', 'rating', 'total_completed_jobs',
+                   'created_at', 'updated_at'],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [['created_at', 'DESC']]
@@ -390,8 +406,8 @@ exports.getAllRequests = async (req, res) => {
 
     const where = {};
     
-    // Status filter
-    if (status) {
+    // Status filter - ONLY USE EXISTING STATUSES: 'searching', 'accepted', 'accepted_by_partner', 'ongoing', 'completed', 'cancelled'
+    if (status && ['searching', 'accepted', 'accepted_by_partner', 'ongoing', 'completed', 'cancelled'].includes(status)) {
       where.request_status = status;
     }
     
@@ -411,11 +427,6 @@ exports.getAllRequests = async (req, res) => {
         monthAgo.setMonth(monthAgo.getMonth() - 1);
         where.created_at = { [Op.gte]: monthAgo };
       }
-    }
-    
-    // Search filter (customer name or phone)
-    if (search) {
-      where['$customer.full_name$'] = { [Op.iLike]: `%${search}%` };
     }
 
     const { count, rows: requests } = await Request.findAndCountAll({
@@ -437,10 +448,14 @@ exports.getAllRequests = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
-    // Calculate totals ONLY from completed requests
-    const completedRequests = requests.filter(req => req.request_status === "completed");
-    const totalRevenue = completedRequests.reduce((sum, req) => sum + parseFloat(req.base_price || 0), 0);
-    const totalCommission = completedRequests.reduce((sum, req) => sum + parseFloat(req.commission || 0), 0);
+    // Calculate totals from ALL completed requests, not just current page
+    const completedRequestsAll = await Request.findAll({
+      where: { request_status: 'completed' },
+      attributes: ['base_price', 'commission']
+    });
+    
+    const totalRevenue = completedRequestsAll.reduce((sum, req) => sum + parseFloat(req.base_price || 0), 0);
+    const totalCommission = completedRequestsAll.reduce((sum, req) => sum + parseFloat(req.commission || 0), 0);
 
     res.status(200).json({
       success: true,
@@ -470,7 +485,7 @@ exports.getAllRequests = async (req, res) => {
   }
 };
 
-// Get documents with pagination and filters
+// Get documents with pagination and filters - UPDATED WITH EMERGENCY CONTACT
 exports.getPartnerDocuments = async (req, res) => {
   try {
     const { status, search, page = 1, limit = 20 } = req.query;
@@ -480,12 +495,10 @@ exports.getPartnerDocuments = async (req, res) => {
       user_type: 'delivery'
     };
     
-    // Status filter
+    // Status filter - SIMPLIFIED
     if (status === 'verified') {
       where.is_active = true;
     } else if (status === 'pending') {
-      where.is_active = false;
-    } else if (status === 'rejected') {
       where.is_active = false;
     }
     
@@ -502,7 +515,8 @@ exports.getPartnerDocuments = async (req, res) => {
       where,
       attributes: ['id', 'full_name', 'phone', 'nid_number', 'is_active', 
                    'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
-                   'created_at'],
+                   'created_at', 'emergency_contact_name', 'emergency_contact_phone', 
+                   'emergency_contact_relationship', 'address'],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [['created_at', 'DESC']]
@@ -545,8 +559,12 @@ exports.getPartnerDocuments = async (req, res) => {
           name: partner.full_name,
           phone: partner.phone,
           nid: partner.nid_number,
+          address: partner.address,
           status: partner.is_active ? 'verified' : 'pending',
-          joined: partner.created_at
+          joined: partner.created_at,
+          emergency_contact_name: partner.emergency_contact_name,
+          emergency_contact_phone: partner.emergency_contact_phone,
+          emergency_contact_relationship: partner.emergency_contact_relationship
         },
         documents: docs,
         total_docs: docs.length
