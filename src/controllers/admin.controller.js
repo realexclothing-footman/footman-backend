@@ -29,6 +29,14 @@ exports.getDashboardStats = async (req, res) => {
     const totalCustomers = await User.count({ where: { user_type: 'customer' } });
     const totalDeliveryBoys = await User.count({ where: { user_type: 'delivery' } });
     
+    // Get online partners count
+    const onlinePartners = await User.count({ 
+      where: { 
+        user_type: 'delivery',
+        is_online: true 
+      } 
+    });
+    
     // Get total requests count
     const totalRequests = await Request.count();
     
@@ -97,6 +105,7 @@ exports.getDashboardStats = async (req, res) => {
         stats: {
           total_customers: totalCustomers,
           total_delivery_boys: totalDeliveryBoys,
+          online_partners: onlinePartners,
           total_requests: totalRequests,
           today_requests: todayRequests,
           total_revenue: totalRevenue,
@@ -191,14 +200,106 @@ exports.getRevenueTimeSeries = async (req, res) => {
   }
 };
 
+// Get online partners with GPS locations
+exports.getOnlinePartners = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: partners } = await User.findAndCountAll({
+      where: {
+        user_type: 'delivery',
+        is_online: true,
+        latitude: { [Op.not]: null },
+        longitude: { [Op.not]: null }
+      },
+      attributes: ['id', 'full_name', 'phone', 'latitude', 'longitude', 
+                   'last_location_update', 'is_online', 'rating', 
+                   'total_completed_jobs', 'created_at'],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['last_location_update', 'DESC']]
+    });
+
+    // Get active jobs for each partner
+    const partnersWithJobs = await Promise.all(
+      partners.map(async (partner) => {
+        const activeJobs = await Request.count({
+          where: {
+            footman_id: partner.id,
+            request_status: ['accepted', 'ongoing']
+          }
+        });
+
+        return {
+          ...partner.toJSON(),
+          active_jobs: activeJobs,
+          location_age: partner.last_location_update 
+            ? Math.floor((new Date() - new Date(partner.last_location_update)) / 60000)
+            : null
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        partners: partnersWithJobs,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get online partners error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch online partners',
+      error: error.message
+    });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
-    const { user_type, page = 1, limit = 20 } = req.query;
+    const { user_type, status, is_online, search, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
+    
+    // User type filter
     if (user_type) {
       where.user_type = user_type;
+    }
+    
+    // Status filter (is_active)
+    if (status === 'active') {
+      where.is_active = true;
+    } else if (status === 'inactive') {
+      where.is_active = false;
+    } else if (status === 'pending') {
+      where.is_active = false;
+      where.user_type = 'delivery';
+    }
+    
+    // Online status filter
+    if (is_online === 'true') {
+      where.is_online = true;
+    } else if (is_online === 'false') {
+      where.is_online = false;
+    }
+    
+    // Search filter
+    if (search) {
+      where[Op.or] = [
+        { full_name: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } },
+        { nid_number: { [Op.iLike]: `%${search}%` } }
+      ];
     }
 
     const { count, rows: users } = await User.findAndCountAll({
@@ -261,7 +362,7 @@ exports.getAllOrders = async (req, res) => {
     });
 
     res.status(200).json({
-      success: false,
+      success: true,
       data: {
         orders,
         pagination: {
@@ -284,12 +385,37 @@ exports.getAllOrders = async (req, res) => {
 
 exports.getAllRequests = async (req, res) => {
   try {
-    const { status, page = 1, limit = 50 } = req.query;
+    const { status, date_range, search, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
+    
+    // Status filter
     if (status) {
       where.request_status = status;
+    }
+    
+    // Date range filter
+    if (date_range) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (date_range === 'today') {
+        where.created_at = { [Op.gte]: today };
+      } else if (date_range === 'week') {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        where.created_at = { [Op.gte]: weekAgo };
+      } else if (date_range === 'month') {
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        where.created_at = { [Op.gte]: monthAgo };
+      }
+    }
+    
+    // Search filter (customer name or phone)
+    if (search) {
+      where['$customer.full_name$'] = { [Op.iLike]: `%${search}%` };
     }
 
     const { count, rows: requests } = await Request.findAndCountAll({
@@ -339,6 +465,111 @@ exports.getAllRequests = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch requests',
+      error: error.message
+    });
+  }
+};
+
+// Get documents with pagination and filters
+exports.getPartnerDocuments = async (req, res) => {
+  try {
+    const { status, search, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const where = {
+      user_type: 'delivery'
+    };
+    
+    // Status filter
+    if (status === 'verified') {
+      where.is_active = true;
+    } else if (status === 'pending') {
+      where.is_active = false;
+    } else if (status === 'rejected') {
+      where.is_active = false;
+    }
+    
+    // Search filter
+    if (search) {
+      where[Op.or] = [
+        { full_name: { [Op.iLike]: `%${search}%` } },
+        { phone: { [Op.iLike]: `%${search}%` } },
+        { nid_number: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+
+    const { count, rows: partners } = await User.findAndCountAll({
+      where,
+      attributes: ['id', 'full_name', 'phone', 'nid_number', 'is_active', 
+                   'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
+                   'created_at'],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['created_at', 'DESC']]
+    });
+
+    // Format response for documents view
+    const documents = partners.map(partner => {
+      const docs = [];
+      
+      if (partner.profile_image_url && partner.profile_image_url !== 'null') {
+        docs.push({
+          type: 'profile',
+          title: 'Profile Photo',
+          url: partner.profile_image_url,
+          verified: partner.is_active
+        });
+      }
+      
+      if (partner.nid_front_image_url && partner.nid_front_image_url !== 'null') {
+        docs.push({
+          type: 'nid_front',
+          title: 'NID Front',
+          url: partner.nid_front_image_url,
+          verified: partner.is_active
+        });
+      }
+      
+      if (partner.nid_back_image_url && partner.nid_back_image_url !== 'null') {
+        docs.push({
+          type: 'nid_back',
+          title: 'NID Back',
+          url: partner.nid_back_image_url,
+          verified: partner.is_active
+        });
+      }
+      
+      return {
+        partner: {
+          id: partner.id,
+          name: partner.full_name,
+          phone: partner.phone,
+          nid: partner.nid_number,
+          status: partner.is_active ? 'verified' : 'pending',
+          joined: partner.created_at
+        },
+        documents: docs,
+        total_docs: docs.length
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        documents,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get partner documents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch partner documents',
       error: error.message
     });
   }
