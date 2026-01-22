@@ -1,5 +1,6 @@
 const app = require('./app');
 const { sequelize, testConnection } = require('./config/database');
+const socketService = require('./socket/socket.service');
 
 const PORT = process.env.PORT || 3000;
 
@@ -30,12 +31,16 @@ const startServer = async () => {
     await syncDatabase();
   }
   
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`✅ Server is running on port ${PORT}`);
     console.log(`🌐 Health check: http://localhost:${PORT}/health`);
     console.log(`📚 API: http://localhost:${PORT}/api/v1`);
+    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
     console.log('🔄 Server started successfully!');
   });
+  
+  // Initialize WebSocket server
+  socketService.initialize(server);
 };
 
 process.on('unhandledRejection', (err) => {

@@ -19,7 +19,8 @@
     "jsonwebtoken": "^9.0.0",
     "multer": "^2.0.2",
     "pg": "^8.10.0",
-    "sequelize": "^6.30.0"
+    "sequelize": "^6.30.0",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"

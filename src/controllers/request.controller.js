@@ -1,5 +1,6 @@
 const Request = require('../models/Request');
 const FootmanService = require('../services/footman.service');
+const socketService = require('../socket/socket.service');
 
 // ==================== CUSTOMER REQUEST CONTROLLERS ====================
 
@@ -14,7 +15,6 @@ exports.createRequest = async (req, res) => {
     console.log("=== CREATE REQUEST API CALLED ===");
     console.log("Customer ID:", customer_id);
     console.log("Request Body:", req.body);
-    console.log("Headers auth:", req.headers.authorization ? "Present" : "Missing");
 
     const lat = latitude || pickup_latitude;
     const lng = longitude || pickup_longitude;
@@ -45,6 +45,25 @@ exports.createRequest = async (req, res) => {
       request_status: 'searching',
       price_tier: result.request.price_breakdown.priceTier
     });
+
+    // Emit WebSocket event for request creation
+    socketService.notifyCustomer(customer_id, 'request_created', {
+      requestId: request.id,
+      status: 'searching',
+      message: 'Request sent to nearest Footman',
+      timestamp: Date.now()
+    });
+
+    // Notify the assigned partner if online
+    if (result.footman && result.footman.id) {
+      socketService.notifyPartner(result.footman.id.toString(), 'new_request', {
+        requestId: request.id,
+        customerId: customer_id,
+        distance: result.request.distance_km,
+        price: result.request.price_breakdown.basePrice,
+        timestamp: Date.now()
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -165,6 +184,23 @@ exports.cancelRequest = async (req, res) => {
       request_status: 'cancelled',
       cancelled_at: new Date()
     });
+
+    // Emit WebSocket event for cancellation
+    socketService.notifyCustomer(customer_id, 'request_cancelled', {
+      requestId: request.id,
+      status: 'cancelled',
+      message: 'Request cancelled successfully',
+      timestamp: Date.now()
+    });
+
+    // Notify partner if assigned
+    if (request.footman_id) {
+      socketService.notifyPartner(request.footman_id.toString(), 'request_cancelled', {
+        requestId: request.id,
+        customerId: customer_id,
+        timestamp: Date.now()
+      });
+    }
 
     res.json({
       success: true,
@@ -308,6 +344,22 @@ exports.selectPaymentMethod = async (req, res) => {
       payment_flow_state: 'payment_selected'
     });
 
+    // Emit WebSocket event for payment selection
+    socketService.notifyCustomer(customer_id, 'payment_selected', {
+      requestId: request.id,
+      paymentMethod: payment_method,
+      timestamp: Date.now()
+    });
+
+    // Notify partner
+    if (request.footman_id) {
+      socketService.notifyPartner(request.footman_id.toString(), 'customer_payment_selected', {
+        requestId: request.id,
+        paymentMethod: payment_method,
+        timestamp: Date.now()
+      });
+    }
+
     res.json({
       success: true,
       message: `Payment method selected: ${payment_method.toUpperCase()}`,
@@ -385,6 +437,124 @@ exports.checkPaymentScreen = async (req, res) => {
     res.status(400).json({
       success: false,
       message: 'Failed to check payment status'
+    });
+  }
+};
+
+/**
+ * 9. EMIT PARTNER LOCATION UPDATE (For WebSocket)
+ * This should be called by partner app when location changes
+ */
+exports.emitPartnerLocation = async (req, res) => {
+  try {
+    const partner_id = req.user.id;
+    const { latitude, longitude, bearing, speed, request_id } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Location is required'
+      });
+    }
+
+    // Emit WebSocket event for partner location
+    socketService.io.emit('partner_location_update', {
+      partnerId: partner_id,
+      latitude,
+      longitude,
+      bearing: bearing || 0,
+      speed: speed || 0,
+      requestId: request_id,
+      timestamp: Date.now()
+    });
+
+    // Also notify specific customer if request_id is provided
+    if (request_id) {
+      const request = await Request.findOne({
+        where: { id: request_id, footman_id: partner_id },
+        attributes: ['customer_id']
+      });
+
+      if (request && request.customer_id) {
+        socketService.notifyCustomer(request.customer_id.toString(), 'partner_location', {
+          partnerId: partner_id,
+          latitude,
+          longitude,
+          bearing: bearing || 0,
+          speed: speed || 0,
+          requestId: request_id,
+          timestamp: Date.now()
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Location update broadcasted',
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.error('Emit partner location error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to broadcast location'
+    });
+  }
+};
+
+/**
+ * 10. UPDATE REQUEST STATUS WITH WEBSOCKET NOTIFICATION
+ */
+exports.updateRequestStatus = async (req, res) => {
+  try {
+    const partner_id = req.user.id;
+    const { request_id, status, message } = req.body;
+
+    const request = await Request.findOne({
+      where: { id: request_id, footman_id: partner_id },
+      include: [
+        {
+          association: 'footman',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ]
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found or unauthorized'
+      });
+    }
+
+    // Update request status
+    await request.update({
+      request_status: status,
+      updated_at: new Date()
+    });
+
+    // Emit WebSocket event for status change
+    socketService.notifyCustomer(request.customer_id.toString(), 'request_status_update', {
+      requestId: request_id,
+      status: status,
+      message: message || `Request status changed to ${status}`,
+      partnerId: partner_id,
+      partnerName: request.footman?.full_name || 'Footman',
+      timestamp: Date.now()
+    });
+
+    res.json({
+      success: true,
+      message: `Request status updated to ${status}`,
+      data: { request }
+    });
+
+  } catch (error) {
+    console.error('Update request status error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update request status'
     });
   }
 };

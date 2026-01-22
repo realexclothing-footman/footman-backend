@@ -59,4 +59,12 @@ router.get('/footman/earnings', authMiddleware, footmanController.getFootmanEarn
 // NEW: Cleanup old rejections (admin only - can be called via cron)
 router.delete('/cleanup/rejections', authMiddleware, footmanController.cleanupOldRejections);
 
+// ==================== WEBSOCKET SUPPORT ROUTES ====================
+
+// Partner location update (emits WebSocket event)
+router.post('/partner/location', authMiddleware, requestController.emitPartnerLocation);
+
+// Update request status with WebSocket notification
+router.post('/:id/status/ws', authMiddleware, requestController.updateRequestStatus);
+
 module.exports = router;
