@@ -64,7 +64,7 @@ class SocketService {
       });
 
       // ==================== SMART PARTNER LOCATION UPDATES ====================
-      socket.on('partner_location_update', (data) {
+      socket.on('partner_location_update', (data) => {
         try {
           const { partnerId, latitude, longitude, bearing, speed, requestId, timestamp } = data;
           
