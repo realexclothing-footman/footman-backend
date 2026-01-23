@@ -64,7 +64,7 @@ class SocketService {
       });
 
       // ==================== SMART PARTNER LOCATION UPDATES ====================
-      socket.on('partner_location_update', (data) => {
+      socket.on('partner_location_update', (data) {
         try {
           const { partnerId, latitude, longitude, bearing, speed, requestId, timestamp } = data;
           
@@ -326,6 +326,16 @@ class SocketService {
       return true;
     }
     return false;
+  }
+
+  // FIXED: Add notifyCustomer function (request.controller.js calls this)
+  notifyCustomer(userId, event, data) {
+    return this.notifyUser(userId, event, data);
+  }
+
+  // FIXED: Add notifyPartner function (request.controller.js calls this)
+  notifyPartner(userId, event, data) {
+    return this.notifyUser(userId, event, data);
   }
 
   // Broadcast to all users of specific type
