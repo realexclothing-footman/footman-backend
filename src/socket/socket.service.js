@@ -3,33 +3,34 @@ const { Server } = require('socket.io');
 class SocketService {
   constructor() {
     this.io = null;
-    this.activeConnections = new Map(); // userId -> socketId
-    this.partnerRooms = new Map(); // partnerId -> roomName
-    this.customerRooms = new Map(); // customerId -> roomName
+    this.activeConnections = new Map(); // userId -> {socketId, userType, rooms}
+    this.trackingSessions = new Map(); // requestId -> {customerId, partnerId, partnerPositions[]}
   }
 
   initialize(server) {
     this.io = new Server(server, {
       cors: {
-        origin: "*", // In production, replace with your app URLs
+        origin: "*",
         methods: ["GET", "POST"],
         credentials: true
       },
-      transports: ['websocket', 'polling'] // Fallback to polling if websocket fails
+      transports: ['websocket'],
+      pingInterval: 25000,
+      pingTimeout: 20000
     });
 
     this.setupEventHandlers();
-    console.log('✅ Socket.io server initialized');
+    console.log('✅ Smart Socket.io server initialized');
   }
 
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`🔌 New socket connection: ${socket.id}`);
+      console.log(`🔌 New connection: ${socket.id}`);
 
       // ==================== AUTHENTICATION ====================
       socket.on('authenticate', (data) => {
         try {
-          const { userId, userType, token } = data;
+          const { userId, userType } = data;
           
           if (!userId || !userType) {
             socket.emit('auth_error', { message: 'Missing user data' });
@@ -37,26 +38,24 @@ class SocketService {
           }
 
           // Store connection
-          this.activeConnections.set(userId, socket.id);
-          
-          // Join user-specific room for private messages
+          this.activeConnections.set(userId, {
+            socketId: socket.id,
+            userType: userType,
+            rooms: new Set()
+          });
+
+          // Join user-specific room
           const userRoom = `${userType}_${userId}`;
           socket.join(userRoom);
-          
-          // Store room mapping
-          if (userType === 'partner') {
-            this.partnerRooms.set(userId, userRoom);
-            console.log(`🟢 Partner ${userId} connected to room ${userRoom}`);
-          } else if (userType === 'customer') {
-            this.customerRooms.set(userId, userRoom);
-            console.log(`🔵 Customer ${userId} connected to room ${userRoom}`);
-          }
+          this.activeConnections.get(userId).rooms.add(userRoom);
 
           socket.emit('authenticated', { 
             success: true, 
-            message: 'Authentication successful',
-            socketId: socket.id 
+            socketId: socket.id,
+            userId: userId
           });
+
+          console.log(`✅ ${userType.toUpperCase()} ${userId} authenticated`);
 
         } catch (error) {
           console.error('Authentication error:', error);
@@ -64,32 +63,104 @@ class SocketService {
         }
       });
 
-      // ==================== PARTNER LOCATION UPDATES ====================
+      // ==================== SMART PARTNER LOCATION UPDATES ====================
       socket.on('partner_location_update', (data) => {
         try {
-          const { partnerId, latitude, longitude, bearing, speed, requestId } = data;
+          const { partnerId, latitude, longitude, bearing, speed, requestId, timestamp } = data;
           
           if (!partnerId || !latitude || !longitude) {
-            console.log('Invalid location data');
             return;
           }
 
-          console.log(`📍 Partner ${partnerId} location: ${latitude}, ${longitude}`);
-          
-          // Broadcast to all customers tracking this partner
-          // In real scenario, only broadcast to customers with active request
-          socket.broadcast.emit('partner_location', {
+          const locationData = {
             partnerId,
             latitude,
             longitude,
-            bearing,
-            speed,
+            bearing: bearing || 0,
+            speed: speed || 0,
             requestId,
-            timestamp: Date.now()
-          });
+            timestamp: timestamp || Date.now()
+          };
+
+          // Store tracking session if requestId exists
+          if (requestId) {
+            if (!this.trackingSessions.has(requestId)) {
+              this.trackingSessions.set(requestId, {
+                customerId: null,
+                partnerId: partnerId,
+                partnerPositions: []
+              });
+            }
+            
+            const session = this.trackingSessions.get(requestId);
+            session.partnerPositions.push(locationData);
+            
+            // Keep only last 100 positions for trail
+            if (session.partnerPositions.length > 100) {
+              session.partnerPositions.shift();
+            }
+            
+            // Send to customer if exists
+            if (session.customerId && this.activeConnections.has(session.customerId)) {
+              const customerConn = this.activeConnections.get(session.customerId);
+              this.io.to(`${customerConn.userType}_${session.customerId}`).emit('partner_location', locationData);
+              
+              // Also send the trail for smooth rendering
+              if (session.partnerPositions.length > 1) {
+                this.io.to(`${customerConn.userType}_${session.customerId}`).emit('partner_trail', {
+                  requestId,
+                  positions: session.partnerPositions
+                });
+              }
+            }
+          } else {
+            // Partner is online but not on a job - send to all customers in range
+            socket.broadcast.emit('available_partner_location', locationData);
+          }
 
         } catch (error) {
           console.error('Location update error:', error);
+        }
+      });
+
+      // ==================== REQUEST TRACKING SETUP ====================
+      socket.on('setup_tracking', (data) => {
+        try {
+          const { requestId, customerId, partnerId } = data;
+          
+          if (!requestId || !customerId || !partnerId) {
+            return;
+          }
+
+          console.log(`📱 Setting up tracking for request ${requestId}: customer ${customerId}, partner ${partnerId}`);
+
+          // Create or update tracking session
+          this.trackingSessions.set(requestId, {
+            customerId,
+            partnerId,
+            partnerPositions: [],
+            startedAt: Date.now()
+          });
+
+          // Notify both parties
+          if (this.activeConnections.has(customerId)) {
+            const customerConn = this.activeConnections.get(customerId);
+            this.io.to(`${customerConn.userType}_${customerId}`).emit('tracking_started', {
+              requestId,
+              partnerId
+            });
+          }
+
+          if (this.activeConnections.has(partnerId)) {
+            const partnerConn = this.activeConnections.get(partnerId);
+            this.io.to(`${partnerConn.userType}_${partnerId}`).emit('tracking_started', {
+              requestId,
+              customerId
+            });
+          }
+
+        } catch (error) {
+          console.error('Tracking setup error:', error);
         }
       });
 
@@ -100,10 +171,24 @@ class SocketService {
           
           console.log(`📋 Request ${requestId} status: ${status}`);
           
-          // Notify customer about request status change
-          if (customerId && this.customerRooms.has(customerId)) {
-            const customerRoom = this.customerRooms.get(customerId);
-            this.io.to(customerRoom).emit('request_update', {
+          // Update tracking session if job starts
+          if (status === 'ongoing' && requestId) {
+            if (this.trackingSessions.has(requestId)) {
+              this.trackingSessions.get(requestId).startedAt = Date.now();
+            } else {
+              this.trackingSessions.set(requestId, {
+                customerId,
+                partnerId,
+                partnerPositions: [],
+                startedAt: Date.now()
+              });
+            }
+          }
+
+          // Notify customer
+          if (customerId && this.activeConnections.has(customerId)) {
+            const customerConn = this.activeConnections.get(customerId);
+            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_update', {
               requestId,
               status,
               message,
@@ -112,10 +197,10 @@ class SocketService {
             });
           }
 
-          // Notify partner if needed
-          if (partnerId && this.partnerRooms.has(partnerId)) {
-            const partnerRoom = this.partnerRooms.get(partnerId);
-            this.io.to(partnerRoom).emit('request_update', {
+          // Notify partner
+          if (partnerId && this.activeConnections.has(partnerId)) {
+            const partnerConn = this.activeConnections.get(partnerId);
+            this.io.to(`${partnerConn.userType}_${partnerId}`).emit('request_update', {
               requestId,
               status,
               message,
@@ -124,43 +209,41 @@ class SocketService {
             });
           }
 
+          // Clean up if job completed
+          if (status === 'completed' && requestId) {
+            this.trackingSessions.delete(requestId);
+          }
+
         } catch (error) {
           console.error('Request update error:', error);
         }
       });
 
-      // ==================== PAYMENT UPDATES ====================
-      socket.on('payment_update', (data) => {
+      // ==================== GET TRACKING DATA ====================
+      socket.on('get_tracking_data', (data) => {
         try {
-          const { requestId, status, customerId, partnerId, amount, method } = data;
+          const { requestId } = data;
           
-          console.log(`💰 Payment update for request ${requestId}: ${status}`);
-          
-          // Notify both customer and partner
-          if (customerId && this.customerRooms.has(customerId)) {
-            const customerRoom = this.customerRooms.get(customerId);
-            this.io.to(customerRoom).emit('payment_status', {
-              requestId,
-              status,
-              amount,
-              method,
-              timestamp: Date.now()
-            });
+          if (!requestId) {
+            socket.emit('tracking_data_error', { message: 'Missing requestId' });
+            return;
           }
 
-          if (partnerId && this.partnerRooms.has(partnerId)) {
-            const partnerRoom = this.partnerRooms.get(partnerId);
-            this.io.to(partnerRoom).emit('payment_status', {
-              requestId,
-              status,
-              amount,
-              method,
-              timestamp: Date.now()
-            });
+          const session = this.trackingSessions.get(requestId);
+          if (!session) {
+            socket.emit('tracking_data', { requestId, positions: [] });
+            return;
           }
+
+          socket.emit('tracking_data', {
+            requestId,
+            positions: session.partnerPositions,
+            startedAt: session.startedAt
+          });
 
         } catch (error) {
-          console.error('Payment update error:', error);
+          console.error('Get tracking data error:', error);
+          socket.emit('tracking_data_error', { message: 'Failed to get tracking data' });
         }
       });
 
@@ -168,20 +251,19 @@ class SocketService {
       socket.on('disconnect', () => {
         console.log(`🔌 Socket disconnected: ${socket.id}`);
         
-        // Remove from active connections
-        for (const [userId, socketId] of this.activeConnections.entries()) {
-          if (socketId === socket.id) {
+        // Find user by socketId and clean up
+        for (const [userId, conn] of this.activeConnections.entries()) {
+          if (conn.socketId === socket.id) {
             this.activeConnections.delete(userId);
+            console.log(`🔴 ${conn.userType.toUpperCase()} ${userId} disconnected`);
             
-            // Remove from room mappings
-            if (this.partnerRooms.has(userId)) {
-              this.partnerRooms.delete(userId);
-              console.log(`🔴 Partner ${userId} disconnected`);
-            } else if (this.customerRooms.has(userId)) {
-              this.customerRooms.delete(userId);
-              console.log(`🔵 Customer ${userId} disconnected`);
+            // Clean up any tracking sessions
+            for (const [requestId, session] of this.trackingSessions.entries()) {
+              if (session.partnerId === userId || session.customerId === userId) {
+                this.trackingSessions.delete(requestId);
+                console.log(`🧹 Cleared tracking session ${requestId}`);
+              }
             }
-            
             break;
           }
         }
@@ -196,49 +278,84 @@ class SocketService {
 
   // ==================== UTILITY METHODS ====================
   
-  // Send notification to specific customer
-  notifyCustomer(customerId, event, data) {
-    if (this.customerRooms.has(customerId)) {
-      const room = this.customerRooms.get(customerId);
-      this.io.to(room).emit(event, data);
+  // Join tracking room
+  joinTrackingRoom(socket, requestId) {
+    if (!requestId) return false;
+    
+    const roomName = `tracking_${requestId}`;
+    socket.join(roomName);
+    
+    const userId = this.getUserIdBySocketId(socket.id);
+    if (userId && this.activeConnections.has(userId)) {
+      this.activeConnections.get(userId).rooms.add(roomName);
+    }
+    
+    return true;
+  }
+
+  // Leave tracking room
+  leaveTrackingRoom(socket, requestId) {
+    if (!requestId) return false;
+    
+    const roomName = `tracking_${requestId}`;
+    socket.leave(roomName);
+    
+    const userId = this.getUserIdBySocketId(socket.id);
+    if (userId && this.activeConnections.has(userId)) {
+      this.activeConnections.get(userId).rooms.delete(roomName);
+    }
+    
+    return true;
+  }
+
+  // Get user ID by socket ID
+  getUserIdBySocketId(socketId) {
+    for (const [userId, conn] of this.activeConnections.entries()) {
+      if (conn.socketId === socketId) {
+        return userId;
+      }
+    }
+    return null;
+  }
+
+  // Send notification to specific user
+  notifyUser(userId, event, data) {
+    if (this.activeConnections.has(userId)) {
+      const conn = this.activeConnections.get(userId);
+      this.io.to(`${conn.userType}_${userId}`).emit(event, data);
       return true;
     }
     return false;
   }
 
-  // Send notification to specific partner
-  notifyPartner(partnerId, event, data) {
-    if (this.partnerRooms.has(partnerId)) {
-      const room = this.partnerRooms.get(partnerId);
-      this.io.to(room).emit(event, data);
-      return true;
+  // Broadcast to all users of specific type
+  broadcastToUserType(userType, event, data) {
+    for (const [userId, conn] of this.activeConnections.entries()) {
+      if (conn.userType === userType) {
+        this.io.to(`${userType}_${userId}`).emit(event, data);
+      }
     }
-    return false;
   }
 
-  // Broadcast to all partners
-  broadcastToPartners(event, data) {
-    this.io.emit(`partners_${event}`, data);
-  }
-
-  // Broadcast to all customers
-  broadcastToCustomers(event, data) {
-    this.io.emit(`customers_${event}`, data);
-  }
-
-  // Get online partners count
-  getOnlinePartnersCount() {
-    return this.partnerRooms.size;
-  }
-
-  // Get online customers count
-  getOnlineCustomersCount() {
-    return this.customerRooms.size;
+  // Get online partners
+  getOnlinePartners() {
+    const partners = [];
+    for (const [userId, conn] of this.activeConnections.entries()) {
+      if (conn.userType === 'partner') {
+        partners.push(userId);
+      }
+    }
+    return partners;
   }
 
   // Check if user is online
   isUserOnline(userId) {
     return this.activeConnections.has(userId);
+  }
+
+  // Get active tracking sessions
+  getActiveTrackingSessions() {
+    return Array.from(this.trackingSessions.entries());
   }
 }
 

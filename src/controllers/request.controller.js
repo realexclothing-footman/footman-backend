@@ -558,3 +558,50 @@ exports.updateRequestStatus = async (req, res) => {
     });
   }
 };
+
+/**
+ * NEW 11. GET REQUEST DETAILS FOR PARTNER (includes customer ID for tracking)
+ */
+exports.getRequestDetailsForPartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner_id = req.user.id;
+
+    const request = await Request.findOne({
+      where: { 
+        id, 
+        footman_id: partner_id 
+      },
+      attributes: [
+        'id', 'request_number', 'request_status', 'customer_id',
+        'pickup_lat', 'pickup_lng', 'distance_km', 'base_price',
+        'footman_earnings', 'payment_flow_state', 'customer_selected_payment',
+        'partner_confirmed_at', 'payment_lock', 'created_at', 'completed_at'
+      ],
+      include: [
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone', 'latitude', 'longitude']
+        }
+      ]
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found or unauthorized'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { request }
+    });
+  } catch (error) {
+    console.error('Get request details for partner error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to fetch request details'
+    });
+  }
+};

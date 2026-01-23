@@ -16,15 +16,15 @@ class LocationService {
         return degrees * (Math.PI/180);
     }
 
-    // Find available footmen within 3km radius
-    static async findNearbyFootmen(userLat, userLng, radiusKm = 3) {
+    // Find available footmen within 1km radius (FOOTMAN BUSINESS LOGIC)
+    static async findNearbyFootmen(userLat, userLng, radiusKm = 1) {
         // This will be implemented with database query
         // For now, return stub
         return [];
     }
 
-    // Check if footman is within 3km of pickup
-    static isWithinRadius(footmanLat, footmanLng, pickupLat, pickupLng, radiusKm = 3) {
+    // Check if footman is within 1km of pickup (FOOTMAN BUSINESS LOGIC)
+    static isWithinRadius(footmanLat, footmanLng, pickupLat, pickupLng, radiusKm = 1) {
         const distance = this.calculateDistance(footmanLat, footmanLng, pickupLat, pickupLng);
         return distance <= radiusKm;
     }

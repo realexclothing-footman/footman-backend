@@ -68,3 +68,6 @@ router.post('/partner/location', authMiddleware, requestController.emitPartnerLo
 router.post('/:id/status/ws', authMiddleware, requestController.updateRequestStatus);
 
 module.exports = router;
+
+// NEW: Get request details for partner (includes customer ID for tracking)
+router.get('/partner/:id', authMiddleware, requestController.getRequestDetailsForPartner);
