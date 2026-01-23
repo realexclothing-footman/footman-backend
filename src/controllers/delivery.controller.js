@@ -1,4 +1,4 @@
-const { User, Order, OrderItem, Transaction } = require('../models');
+const { User, Order, OrderItem } = require('../models');
 const MatchingService = require('../services/matching.service');
 const PricingService = require('../services/pricing.service');
 const { Op } = require('sequelize');
@@ -352,20 +352,19 @@ exports.updateOrderStatus = async (req, res) => {
       ...(status === 'cancelled' && { cancelled_at: new Date() })
     });
 
-    // If delivered, create transaction record
+    // If delivered, update user earnings stats
     if (status === 'delivered') {
       const pricing = order.pricing_details ? JSON.parse(order.pricing_details) : null;
       
       if (pricing && pricing.partnerEarnings) {
-        await Transaction.create({
-          order_id: order.id,
-          footman_id: footman_id,
-          amount: pricing.partnerEarnings,
-          commission: pricing.commission,
-          total_amount: pricing.totalPrice,
-          transaction_type: 'delivery_earning',
-          status: 'completed'
-        });
+        // Update user's total earnings (stored in user table)
+        const user = await User.findByPk(footman_id);
+        if (user) {
+          await user.update({
+            total_earnings: (user.total_earnings || 0) + pricing.partnerEarnings,
+            total_completed_jobs: (user.total_completed_jobs || 0) + 1
+          });
+        }
       }
     }
 
@@ -390,14 +389,14 @@ exports.updateOrderStatus = async (req, res) => {
 };
 
 /**
- * 7. GET FOOTMAN STATS
+ * 7. GET FOOTMAN STATS (FIXED: No Transaction model)
  */
 exports.getFootmanStats = async (req, res) => {
   try {
     const footman_id = req.user.id;
 
     const user = await User.findByPk(footman_id, {
-      attributes: ['id', 'full_name', 'phone', 'total_completed_jobs', 'rating', 'is_online']
+      attributes: ['id', 'full_name', 'phone', 'total_completed_jobs', 'total_earnings', 'rating', 'is_online']
     });
 
     if (!user) {
@@ -407,36 +406,37 @@ exports.getFootmanStats = async (req, res) => {
       });
     }
 
-    // Get today's earnings
+    // Get today's completed orders
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todaysTransactions = await Transaction.findAll({
+    const todaysOrders = await Order.findAll({
       where: {
-        footman_id: footman_id,
-        transaction_type: 'delivery_earning',
-        status: 'completed',
-        created_at: {
+        assigned_footman_id: footman_id,
+        order_status: 'delivered',
+        delivered_at: {
           [Op.gte]: today
         }
       }
     });
 
-    const todaysEarnings = todaysTransactions.reduce((sum, transaction) => {
-      return sum + (transaction.amount || 0);
+    // Calculate today's earnings from orders
+    const todaysEarnings = todaysOrders.reduce((sum, order) => {
+      const pricing = order.pricing_details ? JSON.parse(order.pricing_details) : null;
+      return sum + (pricing?.partnerEarnings || 0);
     }, 0);
 
-    // Get total earnings
-    const allTransactions = await Transaction.findAll({
+    // Get all completed orders for total earnings
+    const allOrders = await Order.findAll({
       where: {
-        footman_id: footman_id,
-        transaction_type: 'delivery_earning',
-        status: 'completed'
+        assigned_footman_id: footman_id,
+        order_status: 'delivered'
       }
     });
 
-    const totalEarnings = allTransactions.reduce((sum, transaction) => {
-      return sum + (transaction.amount || 0);
+    const totalEarnings = allOrders.reduce((sum, order) => {
+      const pricing = order.pricing_details ? JSON.parse(order.pricing_details) : null;
+      return sum + (pricing?.partnerEarnings || 0);
     }, 0);
 
     return res.json({
@@ -447,9 +447,9 @@ exports.getFootmanStats = async (req, res) => {
           today: todaysEarnings,
           total: totalEarnings
         },
-        transactions: {
-          today: todaysTransactions.length,
-          total: allTransactions.length
+        jobs: {
+          today: todaysOrders.length,
+          total: allOrders.length
         }
       }
     });
