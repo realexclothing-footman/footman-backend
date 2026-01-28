@@ -1,6 +1,7 @@
 const Request = require('../models/Request');
 const FootmanService = require('../services/footman.service');
 const socketService = require('../socket/socket.service');
+const firebaseService = require('../services/firebase.service');
 
 // ==================== CUSTOMER REQUEST CONTROLLERS ====================
 
@@ -54,8 +55,9 @@ exports.createRequest = async (req, res) => {
       timestamp: Date.now()
     });
 
-    // Notify the assigned partner if online
+    // Send Firebase notification to nearby partners
     if (result.footman && result.footman.id) {
+      // Notify the assigned partner via WebSocket
       socketService.notifyPartner(result.footman.id.toString(), 'new_request', {
         requestId: request.id,
         customerId: customer_id,
@@ -63,6 +65,28 @@ exports.createRequest = async (req, res) => {
         price: result.request.price_breakdown.basePrice,
         timestamp: Date.now()
       });
+
+      // Send Firebase push notification to the assigned partner
+      try {
+        await firebaseService.sendNotificationToUser(
+          result.footman.id,
+          firebaseService.NotificationTemplates.newRequest(
+            result.request.distance_km,
+            result.request.price_breakdown.basePrice
+          ),
+          {
+            type: 'new_request',
+            request_id: request.id.toString(),
+            distance: result.request.distance_km.toString(),
+            price: result.request.price_breakdown.basePrice.toString(),
+            customer_id: customer_id.toString(),
+            timestamp: Date.now().toString()
+          }
+        );
+        console.log(`📤 Firebase notification sent to partner ${result.footman.id}`);
+      } catch (firebaseError) {
+        console.error('❌ Firebase notification failed:', firebaseError.message);
+      }
     }
 
     res.status(201).json({
@@ -200,12 +224,30 @@ exports.cancelRequest = async (req, res) => {
         customerId: customer_id,
         timestamp: Date.now()
       });
+
+      // Send Firebase notification to partner
+      try {
+        await firebaseService.sendNotificationToUser(
+          request.footman_id,
+          firebaseService.NotificationTemplates.requestCancelled(),
+          {
+            type: 'request_cancelled',
+            request_id: request.id.toString(),
+            customer_id: customer_id.toString(),
+            timestamp: Date.now().toString()
+          }
+        );
+        console.log(`📤 Cancellation notification sent to partner ${request.footman_id}`);
+      } catch (firebaseError) {
+        console.error('❌ Firebase cancellation notification failed:', firebaseError.message);
+      }
     }
 
     res.json({
       success: true,
       message: 'Request cancelled successfully'
     });
+
   } catch (error) {
     console.error('Cancel request error:', error);
     res.status(400).json({
@@ -351,13 +393,32 @@ exports.selectPaymentMethod = async (req, res) => {
       timestamp: Date.now()
     });
 
-    // Notify partner
+    // Notify partner via WebSocket
     if (request.footman_id) {
       socketService.notifyPartner(request.footman_id.toString(), 'customer_payment_selected', {
         requestId: request.id,
         paymentMethod: payment_method,
         timestamp: Date.now()
       });
+    }
+
+    // Send Firebase notification to partner
+    if (request.footman_id) {
+      try {
+        await firebaseService.sendNotificationToUser(
+          request.footman_id,
+          firebaseService.NotificationTemplates.paymentSelected(payment_method),
+          {
+            type: 'payment_selected',
+            request_id: request.id.toString(),
+            method: payment_method,
+            timestamp: Date.now().toString()
+          }
+        );
+        console.log(`📤 Payment selection notification sent to partner ${request.footman_id}`);
+      } catch (firebaseError) {
+        console.error('❌ Firebase payment notification failed:', firebaseError.message);
+      }
     }
 
     res.json({
@@ -485,6 +546,25 @@ exports.emitPartnerLocation = async (req, res) => {
           requestId: request_id,
           timestamp: Date.now()
         });
+
+        // Send Firebase notification to customer for location update
+        try {
+          await firebaseService.sendNotificationToUser(
+            request.customer_id,
+            { title: '📍 Footman Location', body: 'Your footman is on the way' },
+            {
+              type: 'partner_location',
+              request_id: request_id.toString(),
+              partner_id: partner_id.toString(),
+              latitude: latitude.toString(),
+              longitude: longitude.toString(),
+              bearing: (bearing || 0).toString(),
+              timestamp: Date.now().toString()
+            }
+          );
+        } catch (firebaseError) {
+          console.error('❌ Firebase location notification failed:', firebaseError.message);
+        }
       }
     }
 
@@ -517,6 +597,10 @@ exports.updateRequestStatus = async (req, res) => {
         {
           association: 'footman',
           attributes: ['id', 'full_name', 'phone']
+        },
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone']
         }
       ]
     });
@@ -543,6 +627,63 @@ exports.updateRequestStatus = async (req, res) => {
       partnerName: request.footman?.full_name || 'Footman',
       timestamp: Date.now()
     });
+
+    // Send Firebase notification based on status
+    try {
+      let notification;
+      let notificationType;
+      
+      switch (status) {
+        case 'accepted_by_partner':
+          notification = firebaseService.NotificationTemplates.requestAccepted(
+            request.footman?.full_name || 'A Footman'
+          );
+          notificationType = 'request_accepted';
+          break;
+          
+        case 'ongoing':
+          notification = firebaseService.NotificationTemplates.jobStarted(
+            request.footman?.full_name || 'Footman'
+          );
+          notificationType = 'job_started';
+          break;
+          
+        case 'completed':
+          notification = firebaseService.NotificationTemplates.jobCompleted();
+          notificationType = 'job_completed';
+          // Also send payment waiting notification to partner
+          if (request.footman_id) {
+            await firebaseService.sendNotificationToUser(
+              request.footman_id,
+              firebaseService.NotificationTemplates.paymentWaiting(),
+              {
+                type: 'payment_waiting',
+                request_id: request_id.toString(),
+                customer_id: request.customer_id.toString(),
+                timestamp: Date.now().toString()
+              }
+            );
+          }
+          break;
+      }
+      
+      if (notification && notificationType) {
+        await firebaseService.sendNotificationToUser(
+          request.customer_id,
+          notification,
+          {
+            type: notificationType,
+            request_id: request_id.toString(),
+            partner_id: partner_id.toString(),
+            partner_name: request.footman?.full_name || 'Footman',
+            timestamp: Date.now().toString()
+          }
+        );
+        console.log(`📤 ${notificationType} notification sent to customer ${request.customer_id}`);
+      }
+    } catch (firebaseError) {
+      console.error('❌ Firebase status notification failed:', firebaseError.message);
+    }
 
     res.json({
       success: true,

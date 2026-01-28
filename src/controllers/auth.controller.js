@@ -430,3 +430,51 @@ exports.getProfile = async (req, res) => {
     });
   }
 };
+
+/**
+ * 8. UPDATE FCM TOKEN (For push notifications)
+ */
+exports.updateFcmToken = async (req, res) => {
+  try {
+    const { fcm_token } = req.body;
+    const userId = req.user.id;
+
+    if (!fcm_token || fcm_token.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'FCM token is required'
+      });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update FCM token
+    await user.updateFcmToken(fcm_token);
+
+    console.log(`✅ FCM token updated for user ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'FCM token updated successfully',
+      data: {
+        user_id: userId,
+        fcm_token_updated: true,
+        fcm_token_updated_at: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Update FCM token error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to update FCM token',
+      error: error.message
+    });
+  }
+};

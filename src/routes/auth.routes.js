@@ -14,5 +14,6 @@ router.post('/reset-password', authController.resetPassword);
 router.get('/profile', authMiddleware, authController.getProfile);
 router.put('/profile', authMiddleware, authController.updateProfile);
 router.put('/change-password', authMiddleware, authController.changePassword);
+router.post('/update-fcm-token', authMiddleware, authController.updateFcmToken);
 
 module.exports = router;

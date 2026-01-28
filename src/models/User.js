@@ -129,6 +129,18 @@ const User = sequelize.define('User', {
     comment: 'OTP expiry time'
   },
   
+  // FIREBASE FCM TOKEN FOR PUSH NOTIFICATIONS
+  fcm_token: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Firebase Cloud Messaging token for push notifications'
+  },
+  fcm_token_updated_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When FCM token was last updated'
+  },
+  
   language: {
     type: DataTypes.STRING(10),
     defaultValue: 'en'
@@ -168,6 +180,13 @@ User.prototype.updateLocation = async function(latitude, longitude) {
 // Instance method to set online status
 User.prototype.setOnlineStatus = async function(isOnline) {
   this.is_online = isOnline;
+  return this.save();
+};
+
+// Instance method to update FCM token
+User.prototype.updateFcmToken = async function(fcmToken) {
+  this.fcm_token = fcmToken;
+  this.fcm_token_updated_at = new Date();
   return this.save();
 };
 

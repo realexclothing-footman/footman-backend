@@ -3,8 +3,15 @@ const { Server } = require('socket.io');
 class SocketService {
   constructor() {
     this.io = null;
-    this.activeConnections = new Map(); // userId -> {socketId, userType, rooms}
-    this.trackingSessions = new Map(); // requestId -> {customerId, partnerId, partnerPositions[]}
+    this.activeConnections = new Map(); // userId -> {socketId, userType, rooms, lastPing}
+    this.trackingSessions = new Map(); // requestId -> {customerId, partnerId, partnerPositions[], lastUpdate}
+    this.partnerThrottle = new Map(); // partnerId -> lastSentTime
+    this.backgroundPartners = new Map(); // partnerId -> {lastLocation, appState}
+    
+    // Constants
+    this.THROTTLE_INTERVAL = 3000; // 3 seconds for GPS updates
+    this.BACKGROUND_PING_INTERVAL = 30000; // 30 seconds for background keepalive
+    this.POSITION_HISTORY_LIMIT = 500; // Store up to 500 positions for smooth trail
   }
 
   initialize(server) {
@@ -14,34 +21,44 @@ class SocketService {
         methods: ["GET", "POST"],
         credentials: true
       },
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'], // Support both for reliability
       pingInterval: 25000,
-      pingTimeout: 20000
+      pingTimeout: 60000, // Longer timeout for background
+      connectionStateRecovery: {
+        maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes recovery
+        skipMiddlewares: true
+      }
     });
 
     this.setupEventHandlers();
-    console.log('✅ Smart Socket.io server initialized');
+    this.startCleanupInterval();
+    console.log('✅ Enhanced Real-time Socket.io server initialized');
   }
 
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
       console.log(`🔌 New connection: ${socket.id}`);
 
-      // ==================== AUTHENTICATION ====================
+      // ==================== ENHANCED AUTHENTICATION ====================
       socket.on('authenticate', (data) => {
         try {
-          const { userId, userType } = data;
+          const { userId, userType, deviceId, appVersion } = data;
           
           if (!userId || !userType) {
             socket.emit('auth_error', { message: 'Missing user data' });
             return;
           }
 
-          // Store connection
+          // Store enhanced connection info
           this.activeConnections.set(userId, {
             socketId: socket.id,
             userType: userType,
-            rooms: new Set()
+            rooms: new Set(),
+            deviceId: deviceId || 'unknown',
+            appVersion: appVersion || '1.0',
+            lastPing: Date.now(),
+            connectionTime: Date.now(),
+            isBackground: false
           });
 
           // Join user-specific room
@@ -49,13 +66,21 @@ class SocketService {
           socket.join(userRoom);
           this.activeConnections.get(userId).rooms.add(userRoom);
 
+          // Join global room for broadcasts
+          socket.join(`${userType}s_online`);
+
           socket.emit('authenticated', { 
             success: true, 
             socketId: socket.id,
-            userId: userId
+            userId: userId,
+            serverTime: Date.now(),
+            throttleInterval: this.THROTTLE_INTERVAL
           });
 
-          console.log(`✅ ${userType.toUpperCase()} ${userId} authenticated`);
+          console.log(`✅ ${userType.toUpperCase()} ${userId} authenticated (${deviceId || 'no-device'})`);
+
+          // Send any pending location updates if reconnecting
+          this.sendPendingUpdates(userId, socket);
 
         } catch (error) {
           console.error('Authentication error:', error);
@@ -63,24 +88,87 @@ class SocketService {
         }
       });
 
-      // ==================== SMART PARTNER LOCATION UPDATES ====================
+      // ==================== APP STATE UPDATES (BACKGROUND/FOREGROUND) ====================
+      socket.on('app_state_change', (data) => {
+        try {
+          const { userId, state } = data; // state: 'background', 'foreground', 'terminated'
+          
+          if (!userId || !this.activeConnections.has(userId)) {
+            return;
+          }
+
+          const conn = this.activeConnections.get(userId);
+          conn.isBackground = state === 'background';
+          conn.lastPing = Date.now();
+
+          console.log(`📱 ${conn.userType.toUpperCase()} ${userId} app state: ${state}`);
+
+          if (state === 'background' && conn.userType === 'partner') {
+            // Partner went to background - setup background tracking
+            this.backgroundPartners.set(userId, {
+              lastLocation: null,
+              appState: 'background',
+              lastUpdate: Date.now()
+            });
+          } else if (state === 'foreground' && conn.userType === 'partner') {
+            // Partner came to foreground
+            this.backgroundPartners.delete(userId);
+          }
+
+        } catch (error) {
+          console.error('App state change error:', error);
+        }
+      });
+
+      // ==================== ENHANCED PARTNER LOCATION UPDATES WITH THROTTLING ====================
       socket.on('partner_location_update', (data) => {
         try {
-          const { partnerId, latitude, longitude, bearing, speed, requestId, timestamp } = data;
+          const { partnerId, latitude, longitude, bearing, speed, accuracy, requestId, timestamp, isBackground } = data;
           
           if (!partnerId || !latitude || !longitude) {
             return;
           }
 
+          // Throttle check - only send every 3 seconds
+          const now = Date.now();
+          const lastSent = this.partnerThrottle.get(partnerId) || 0;
+          
+          if (now - lastSent < this.THROTTLE_INTERVAL && !isBackground) {
+            // Still throttle background but less strictly
+            return;
+          }
+
           const locationData = {
             partnerId,
-            latitude,
-            longitude,
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
             bearing: bearing || 0,
             speed: speed || 0,
+            accuracy: accuracy || 10,
             requestId,
-            timestamp: timestamp || Date.now()
+            timestamp: timestamp || now,
+            isBackground: isBackground || false
           };
+
+          // Update throttle timestamp
+          this.partnerThrottle.set(partnerId, now);
+
+          // Update connection last ping
+          if (this.activeConnections.has(partnerId)) {
+            this.activeConnections.get(partnerId).lastPing = Date.now();
+          }
+
+          // Store in background tracking if applicable
+          if (isBackground && this.activeConnections.has(partnerId)) {
+            const conn = this.activeConnections.get(partnerId);
+            conn.isBackground = true;
+            
+            this.backgroundPartners.set(partnerId, {
+              lastLocation: locationData,
+              appState: 'background',
+              lastUpdate: now
+            });
+          }
 
           // Store tracking session if requestId exists
           if (requestId) {
@@ -88,34 +176,41 @@ class SocketService {
               this.trackingSessions.set(requestId, {
                 customerId: null,
                 partnerId: partnerId,
-                partnerPositions: []
+                partnerPositions: [],
+                lastUpdate: now,
+                startedAt: now
               });
             }
             
             const session = this.trackingSessions.get(requestId);
             session.partnerPositions.push(locationData);
+            session.lastUpdate = now;
             
-            // Keep only last 100 positions for trail
-            if (session.partnerPositions.length > 100) {
-              session.partnerPositions.shift();
+            // Keep optimized position history for smooth trail
+            if (session.partnerPositions.length > this.POSITION_HISTORY_LIMIT) {
+              // Keep every other position after limit for memory optimization
+              session.partnerPositions = session.partnerPositions.filter((_, index) => index % 2 === 0);
             }
             
             // Send to customer if exists
             if (session.customerId && this.activeConnections.has(session.customerId)) {
               const customerConn = this.activeConnections.get(session.customerId);
+              
+              // Send real-time location
               this.io.to(`${customerConn.userType}_${session.customerId}`).emit('partner_location', locationData);
               
-              // Also send the trail for smooth rendering
-              if (session.partnerPositions.length > 1) {
+              // Send trail updates less frequently for performance
+              if (session.partnerPositions.length > 1 && now % 5000 < 100) { // Every ~5 seconds
                 this.io.to(`${customerConn.userType}_${session.customerId}`).emit('partner_trail', {
                   requestId,
-                  positions: session.partnerPositions
+                  positions: session.partnerPositions,
+                  isSmooth: true
                 });
               }
             }
           } else {
-            // Partner is online but not on a job - send to all customers in range
-            socket.broadcast.emit('available_partner_location', locationData);
+            // Partner is online but not on a job
+            this.io.emit('available_partner_location', locationData);
           }
 
         } catch (error) {
@@ -132,97 +227,57 @@ class SocketService {
             return;
           }
 
-          console.log(`📱 Setting up tracking for request ${requestId}: customer ${customerId}, partner ${partnerId}`);
+          console.log(`📱 Setting up real-time tracking for request ${requestId}`);
 
-          // Create or update tracking session
-          this.trackingSessions.set(requestId, {
+          // Create tracking session
+          const session = {
             customerId,
             partnerId,
             partnerPositions: [],
-            startedAt: Date.now()
-          });
+            lastUpdate: Date.now(),
+            startedAt: Date.now(),
+            smoothInterpolation: true // Enable smooth movement
+          };
 
-          // Notify both parties
+          this.trackingSessions.set(requestId, session);
+
+          // Join tracking room
+          const trackingRoom = `tracking_${requestId}`;
+          
           if (this.activeConnections.has(customerId)) {
             const customerConn = this.activeConnections.get(customerId);
-            this.io.to(`${customerConn.userType}_${customerId}`).emit('tracking_started', {
-              requestId,
-              partnerId
-            });
+            socket.join(trackingRoom);
+            customerConn.rooms.add(trackingRoom);
           }
 
           if (this.activeConnections.has(partnerId)) {
             const partnerConn = this.activeConnections.get(partnerId);
-            this.io.to(`${partnerConn.userType}_${partnerId}`).emit('tracking_started', {
-              requestId,
-              customerId
-            });
+            socket.join(trackingRoom);
+            partnerConn.rooms.add(trackingRoom);
           }
+
+          // Notify both parties
+          this.io.to(trackingRoom).emit('tracking_started', {
+            requestId,
+            customerId,
+            partnerId,
+            serverTime: Date.now(),
+            features: {
+              smoothInterpolation: true,
+              realtimeTrail: true,
+              backgroundTracking: true
+            }
+          });
 
         } catch (error) {
           console.error('Tracking setup error:', error);
         }
       });
 
-      // ==================== REQUEST UPDATES ====================
-      socket.on('request_status_update', (data) => {
-        try {
-          const { requestId, status, customerId, partnerId, message } = data;
-          
-          console.log(`📋 Request ${requestId} status: ${status}`);
-          
-          // Update tracking session if job starts
-          if (status === 'ongoing' && requestId) {
-            if (this.trackingSessions.has(requestId)) {
-              this.trackingSessions.get(requestId).startedAt = Date.now();
-            } else {
-              this.trackingSessions.set(requestId, {
-                customerId,
-                partnerId,
-                partnerPositions: [],
-                startedAt: Date.now()
-              });
-            }
-          }
-
-          // Notify customer
-          if (customerId && this.activeConnections.has(customerId)) {
-            const customerConn = this.activeConnections.get(customerId);
-            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_update', {
-              requestId,
-              status,
-              message,
-              partnerId,
-              timestamp: Date.now()
-            });
-          }
-
-          // Notify partner
-          if (partnerId && this.activeConnections.has(partnerId)) {
-            const partnerConn = this.activeConnections.get(partnerId);
-            this.io.to(`${partnerConn.userType}_${partnerId}`).emit('request_update', {
-              requestId,
-              status,
-              message,
-              customerId,
-              timestamp: Date.now()
-            });
-          }
-
-          // Clean up if job completed
-          if (status === 'completed' && requestId) {
-            this.trackingSessions.delete(requestId);
-          }
-
-        } catch (error) {
-          console.error('Request update error:', error);
-        }
-      });
-
-      // ==================== GET TRACKING DATA ====================
+      // ==================== GET ENHANCED TRACKING DATA ====================
       socket.on('get_tracking_data', (data) => {
         try {
-          const { requestId } = data;
+          const { requestId, includeTrail = true } = data;
           
           if (!requestId) {
             socket.emit('tracking_data_error', { message: 'Missing requestId' });
@@ -231,15 +286,30 @@ class SocketService {
 
           const session = this.trackingSessions.get(requestId);
           if (!session) {
-            socket.emit('tracking_data', { requestId, positions: [] });
+            socket.emit('tracking_data', { 
+              requestId, 
+              positions: [],
+              features: {
+                smoothInterpolation: false,
+                realtimeTrail: false
+              }
+            });
             return;
           }
 
-          socket.emit('tracking_data', {
+          const response = {
             requestId,
-            positions: session.partnerPositions,
-            startedAt: session.startedAt
-          });
+            positions: includeTrail ? session.partnerPositions : [],
+            startedAt: session.startedAt,
+            lastUpdate: session.lastUpdate,
+            features: {
+              smoothInterpolation: session.smoothInterpolation,
+              realtimeTrail: true,
+              backgroundTracking: this.backgroundPartners.has(session.partnerId)
+            }
+          };
+
+          socket.emit('tracking_data', response);
 
         } catch (error) {
           console.error('Get tracking data error:', error);
@@ -247,23 +317,66 @@ class SocketService {
         }
       });
 
-      // ==================== DISCONNECTION ====================
-      socket.on('disconnect', () => {
-        console.log(`🔌 Socket disconnected: ${socket.id}`);
+      // ==================== SMOOTH INTERPOLATION REQUEST ====================
+      socket.on('request_interpolation', (data) => {
+        try {
+          const { requestId, positions } = data;
+          
+          if (!requestId || !positions || !Array.isArray(positions)) {
+            return;
+          }
+
+          const session = this.trackingSessions.get(requestId);
+          if (!session) {
+            return;
+          }
+
+          // Calculate interpolated positions for smooth movement
+          const interpolated = this.interpolatePositions(positions);
+          
+          socket.emit('interpolated_positions', {
+            requestId,
+            positions: interpolated,
+            timestamp: Date.now()
+          });
+
+        } catch (error) {
+          console.error('Interpolation error:', error);
+        }
+      });
+
+      // ==================== PING/KEEPALIVE ====================
+      socket.on('ping', (data) => {
+        try {
+          const { userId } = data;
+          if (userId && this.activeConnections.has(userId)) {
+            this.activeConnections.get(userId).lastPing = Date.now();
+          }
+          socket.emit('pong', { serverTime: Date.now() });
+        } catch (error) {
+          // Silent fail for ping/pong
+        }
+      });
+
+      // ==================== DISCONNECTION WITH RECOVERY ====================
+      socket.on('disconnect', (reason) => {
+        console.log(`🔌 Socket disconnected: ${socket.id} (${reason})`);
         
-        // Find user by socketId and clean up
+        // Find user by socketId
         for (const [userId, conn] of this.activeConnections.entries()) {
           if (conn.socketId === socket.id) {
-            this.activeConnections.delete(userId);
-            console.log(`🔴 ${conn.userType.toUpperCase()} ${userId} disconnected`);
             
-            // Clean up any tracking sessions
-            for (const [requestId, session] of this.trackingSessions.entries()) {
-              if (session.partnerId === userId || session.customerId === userId) {
-                this.trackingSessions.delete(requestId);
-                console.log(`🧹 Cleared tracking session ${requestId}`);
-              }
+            // Mark as disconnected but keep in memory for recovery
+            conn.socketId = null;
+            conn.lastPing = Date.now();
+            
+            console.log(`🔴 ${conn.userType.toUpperCase()} ${userId} disconnected (${reason})`);
+            
+            // If partner, keep background tracking alive
+            if (conn.userType === 'partner' && this.backgroundPartners.has(userId)) {
+              console.log(`📱 Partner ${userId} in background, keeping tracking alive`);
             }
+            
             break;
           }
         }
@@ -273,99 +386,148 @@ class SocketService {
       socket.on('error', (error) => {
         console.error('Socket error:', error);
       });
+
+      // ==================== RECONNECTION ====================
+      socket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`🔁 Reconnection attempt ${attemptNumber} for ${socket.id}`);
+      });
     });
   }
 
   // ==================== UTILITY METHODS ====================
-  
-  // Join tracking room
-  joinTrackingRoom(socket, requestId) {
-    if (!requestId) return false;
-    
-    const roomName = `tracking_${requestId}`;
-    socket.join(roomName);
-    
-    const userId = this.getUserIdBySocketId(socket.id);
-    if (userId && this.activeConnections.has(userId)) {
-      this.activeConnections.get(userId).rooms.add(roomName);
-    }
-    
-    return true;
+
+  startCleanupInterval() {
+    // Clean up stale connections every minute
+    setInterval(() => {
+      const now = Date.now();
+      const staleTimeout = 5 * 60 * 1000; // 5 minutes
+      const backgroundTimeout = 10 * 60 * 1000; // 10 minutes for background
+
+      // Clean stale active connections
+      for (const [userId, conn] of this.activeConnections.entries()) {
+        if (now - conn.lastPing > (conn.isBackground ? backgroundTimeout : staleTimeout)) {
+          console.log(`🧹 Cleaning stale connection: ${conn.userType} ${userId}`);
+          this.activeConnections.delete(userId);
+          
+          // Clean tracking sessions
+          for (const [requestId, session] of this.trackingSessions.entries()) {
+            if (session.partnerId === userId || session.customerId === userId) {
+              this.trackingSessions.delete(requestId);
+            }
+          }
+          
+          // Clean background tracking
+          this.backgroundPartners.delete(userId);
+        }
+      }
+
+      // Clean old tracking sessions (completed more than 1 hour ago)
+      for (const [requestId, session] of this.trackingSessions.entries()) {
+        if (now - session.lastUpdate > 60 * 60 * 1000) { // 1 hour
+          this.trackingSessions.delete(requestId);
+        }
+      }
+
+    }, 60000); // Run every minute
   }
 
-  // Leave tracking room
-  leaveTrackingRoom(socket, requestId) {
-    if (!requestId) return false;
-    
-    const roomName = `tracking_${requestId}`;
-    socket.leave(roomName);
-    
-    const userId = this.getUserIdBySocketId(socket.id);
-    if (userId && this.activeConnections.has(userId)) {
-      this.activeConnections.get(userId).rooms.delete(roomName);
-    }
-    
-    return true;
-  }
-
-  // Get user ID by socket ID
-  getUserIdBySocketId(socketId) {
-    for (const [userId, conn] of this.activeConnections.entries()) {
-      if (conn.socketId === socketId) {
-        return userId;
+  sendPendingUpdates(userId, socket) {
+    // Find any tracking sessions for this user
+    for (const [requestId, session] of this.trackingSessions.entries()) {
+      if (session.customerId === userId || session.partnerId === userId) {
+        // Send recent positions if reconnecting
+        if (session.partnerPositions.length > 0) {
+          const recentPositions = session.partnerPositions.slice(-10); // Last 10 positions
+          socket.emit('recovery_data', {
+            requestId,
+            positions: recentPositions,
+            lastUpdate: session.lastUpdate
+          });
+        }
       }
     }
-    return null;
   }
 
-  // Send notification to specific user
+  interpolatePositions(positions) {
+    if (positions.length < 2) return positions;
+    
+    const interpolated = [];
+    
+    for (let i = 0; i < positions.length - 1; i++) {
+      const current = positions[i];
+      const next = positions[i + 1];
+      
+      // Add current position
+      interpolated.push(current);
+      
+      // Interpolate 2 points between current and next for smooth movement
+      for (let j = 1; j <= 2; j++) {
+        const fraction = j / 3;
+        interpolated.push({
+          latitude: current.latitude + (next.latitude - current.latitude) * fraction,
+          longitude: current.longitude + (next.longitude - current.longitude) * fraction,
+          bearing: current.bearing,
+          timestamp: current.timestamp + (next.timestamp - current.timestamp) * fraction
+        });
+      }
+    }
+    
+    // Add last position
+    interpolated.push(positions[positions.length - 1]);
+    
+    return interpolated;
+  }
+
+  // ==================== PUBLIC API (for controllers) ====================
+
   notifyUser(userId, event, data) {
     if (this.activeConnections.has(userId)) {
       const conn = this.activeConnections.get(userId);
-      this.io.to(`${conn.userType}_${userId}`).emit(event, data);
-      return true;
+      if (conn.socketId) {
+        this.io.to(`${conn.userType}_${userId}`).emit(event, data);
+        return true;
+      }
     }
     return false;
   }
 
-  // FIXED: Add notifyCustomer function (request.controller.js calls this)
   notifyCustomer(userId, event, data) {
     return this.notifyUser(userId, event, data);
   }
 
-  // FIXED: Add notifyPartner function (request.controller.js calls this)
   notifyPartner(userId, event, data) {
     return this.notifyUser(userId, event, data);
   }
 
-  // Broadcast to all users of specific type
-  broadcastToUserType(userType, event, data) {
-    for (const [userId, conn] of this.activeConnections.entries()) {
-      if (conn.userType === userType) {
-        this.io.to(`${userType}_${userId}`).emit(event, data);
-      }
-    }
+  broadcastToRoom(room, event, data) {
+    this.io.to(room).emit(event, data);
   }
 
-  // Get online partners
-  getOnlinePartners() {
-    const partners = [];
-    for (const [userId, conn] of this.activeConnections.entries()) {
-      if (conn.userType === 'partner') {
-        partners.push(userId);
-      }
-    }
-    return partners;
-  }
-
-  // Check if user is online
   isUserOnline(userId) {
-    return this.activeConnections.has(userId);
+    const conn = this.activeConnections.get(userId);
+    return conn && conn.socketId !== null;
   }
 
-  // Get active tracking sessions
-  getActiveTrackingSessions() {
-    return Array.from(this.trackingSessions.entries());
+  getPartnerLocation(partnerId) {
+    if (this.backgroundPartners.has(partnerId)) {
+      return this.backgroundPartners.get(partnerId).lastLocation;
+    }
+    return null;
+  }
+
+  // Get active tracking session for a request
+  getTrackingSession(requestId) {
+    return this.trackingSessions.get(requestId);
+  }
+
+  // Force location update (for testing)
+  forceLocationUpdate(partnerId, location) {
+    const conn = this.activeConnections.get(partnerId);
+    if (conn) {
+      this.io.to(`${conn.userType}_${partnerId}`).emit('force_location_update', location);
+      return true;
+    }
+    return false;
   }
 }
 
