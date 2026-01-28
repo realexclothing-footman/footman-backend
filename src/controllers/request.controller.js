@@ -1,12 +1,13 @@
 const Request = require('../models/Request');
 const FootmanService = require('../services/footman.service');
+const MatchingService = require('../services/matching.service');
 const socketService = require('../socket/socket.service');
 const firebaseService = require('../services/firebase.service');
 
 // ==================== CUSTOMER REQUEST CONTROLLERS ====================
 
 /**
- * 1. CREATE HELP REQUEST
+ * 1. CREATE HELP REQUEST - BROADCAST TO ALL NEARBY PARTNERS
  */
 exports.createRequest = async (req, res) => {
   try {
@@ -27,77 +28,117 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // Create help request
-    const result = await FootmanService.createHelpRequest(
-      customer_id, lat, lng
-    );
+    // Get ALL nearby footmen (not just the nearest)
+    const nearbyFootmen = await MatchingService.findNearbyFootmen(lat, lng, 1, 10);
+    
+    if (!nearbyFootmen || nearbyFootmen.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No footmen available within 1KM radius'
+      });
+    }
 
-    // Save to database
+    // Calculate price based on nearest footman distance
+    const nearestDistance = parseFloat(nearbyFootmen[0].distance_km);
+    const PricingService = require('../services/pricing.service');
+    const price = PricingService.calculatePrice(nearestDistance);
+    
+    // Prepare commission breakdown
+    const CommissionService = require('./commission.service');
+    const commission = CommissionService.calculateCommission(price.basePrice);
+
+    // Create request in database (initially no assigned footman)
     const request = await Request.create({
       request_number: Request.generateRequestNumber(),
       customer_id,
       pickup_lat: lat,
       pickup_lng: lng,
-      nearest_footman_id: result.request.nearest_footman_id,
-      distance_km: result.request.distance_km,
-      base_price: result.request.price_breakdown.basePrice,
-      commission: result.request.commission_breakdown.commission,
-      footman_earnings: result.request.commission_breakdown.footmanEarnings,
+      nearest_footman_id: null, // Will be assigned when partner accepts
+      distance_km: nearestDistance,
+      base_price: price.basePrice,
+      commission: commission.commission,
+      footman_earnings: commission.footmanEarnings,
       request_status: 'searching',
-      price_tier: result.request.price_breakdown.priceTier
+      price_tier: price.priceTier
     });
 
-    // Emit WebSocket event for request creation
+    // Emit WebSocket event for request creation to customer
     socketService.notifyCustomer(customer_id, 'request_created', {
       requestId: request.id,
       status: 'searching',
-      message: 'Request sent to nearest Footman',
+      message: 'Request sent to nearby Footmen',
       timestamp: Date.now()
     });
 
-    // Send Firebase notification to nearby partners
-    if (result.footman && result.footman.id) {
-      // Notify the assigned partner via WebSocket
-      socketService.notifyPartner(result.footman.id.toString(), 'new_request', {
-        requestId: request.id,
-        customerId: customer_id,
-        distance: result.request.distance_km,
-        price: result.request.price_breakdown.basePrice,
-        timestamp: Date.now()
-      });
+    // BROADCAST TO ALL NEARBY PARTNERS via WebSocket
+    const broadcastData = {
+      requestId: request.id,
+      customerId: customer_id,
+      distance: nearestDistance,
+      price: price.basePrice,
+      pickupLocation: { lat, lng },
+      timestamp: Date.now()
+    };
 
-      // Send Firebase push notification to the assigned partner
+    // Send to each nearby footman via WebSocket
+    const notifiedPartners = [];
+    for (const footman of nearbyFootmen) {
       try {
+        // WebSocket notification
+        const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
+        
+        // Firebase push notification
         await firebaseService.sendNotificationToUser(
-          result.footman.id,
+          footman.id,
           firebaseService.NotificationTemplates.newRequest(
-            result.request.distance_km,
-            result.request.price_breakdown.basePrice
+            nearestDistance,
+            price.basePrice
           ),
           {
             type: 'new_request',
             request_id: request.id.toString(),
-            distance: result.request.distance_km.toString(),
-            price: result.request.price_breakdown.basePrice.toString(),
+            distance: nearestDistance.toString(),
+            price: price.basePrice.toString(),
             customer_id: customer_id.toString(),
             timestamp: Date.now().toString()
           }
         );
-        console.log(`📤 Firebase notification sent to partner ${result.footman.id}`);
-      } catch (firebaseError) {
-        console.error('❌ Firebase notification failed:', firebaseError.message);
+        
+        if (wsNotified) {
+          notifiedPartners.push({
+            id: footman.id,
+            name: footman.full_name,
+            distance: footman.distance_km,
+            wsConnected: true
+          });
+          console.log(`📤 Notification sent to partner ${footman.id} (${footman.full_name})`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to notify partner ${footman.id}:`, error.message);
       }
     }
 
+    console.log(`📢 Request ${request.id} broadcasted to ${notifiedPartners.length} nearby partners`);
+
     res.status(201).json({
       success: true,
-      message: 'Help request sent! Nearest Footman notified.',
+      message: `Help request sent to ${notifiedPartners.length} nearby Footmen`,
       data: {
         request: {
           ...request.toJSON(),
-          footman: result.footman,
-          price: result.request.price_breakdown,
-          commission: result.request.commission_breakdown
+          nearby_footmen: nearbyFootmen.map(f => ({
+            id: f.id,
+            name: f.full_name,
+            distance: f.distance_km
+          })),
+          price: price,
+          commission: commission
+        },
+        notifications_sent: notifiedPartners.length,
+        broadcast_details: {
+          radius_km: 1,
+          max_partners: 10,
+          actual_notified: notifiedPartners.length
         }
       }
     });
@@ -617,6 +658,14 @@ exports.updateRequestStatus = async (req, res) => {
       request_status: status,
       updated_at: new Date()
     });
+
+    // If partner accepts, update the footman_id in request
+    if (status === 'accepted_by_partner' && !request.footman_id) {
+      await request.update({
+        footman_id: partner_id,
+        nearest_footman_id: partner_id
+      });
+    }
 
     // Emit WebSocket event for status change
     socketService.notifyCustomer(request.customer_id.toString(), 'request_status_update', {
