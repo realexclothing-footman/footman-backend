@@ -44,7 +44,7 @@ exports.createRequest = async (req, res) => {
     const price = PricingService.calculatePrice(nearestDistance);
     
     // Prepare commission breakdown
-    const CommissionService = require('./commission.service');
+    const CommissionService = require('../services/commission.service');
     const commission = CommissionService.calculateCommission(price.basePrice);
 
     // Create request in database (initially no assigned footman)
