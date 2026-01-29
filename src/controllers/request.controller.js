@@ -566,7 +566,7 @@ exports.emitPartnerLocation = async (req, res) => {
       longitude,
       bearing: bearing || 0,
       speed: speed || 0,
-      requestId: request_id,
+      requestId: request.id,
       timestamp: Date.now()
     });
 
@@ -584,7 +584,7 @@ exports.emitPartnerLocation = async (req, res) => {
           longitude,
           bearing: bearing || 0,
           speed: speed || 0,
-          requestId: request_id,
+          requestId: request.id,
           timestamp: Date.now()
         });
 
@@ -669,7 +669,7 @@ exports.updateRequestStatus = async (req, res) => {
 
     // Emit WebSocket event for status change
     socketService.notifyCustomer(request.customer_id.toString(), 'request_status_update', {
-      requestId: request_id,
+      requestId: request.id,
       status: status,
       message: message || `Request status changed to ${status}`,
       partnerId: partner_id,
