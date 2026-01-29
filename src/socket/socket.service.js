@@ -88,6 +88,131 @@ class SocketService {
         }
       });
 
+      // ==================== REQUEST STATUS UPDATES ====================
+      socket.on('request_status_update', (data) => {
+        try {
+          const { requestId, status, message, customerId } = data;
+          
+          if (!requestId || !status) {
+            return;
+          }
+
+          console.log(`📋 Request status update: ${requestId} -> ${status}`);
+
+          // Forward to customer if customerId provided
+          if (customerId && this.activeConnections.has(customerId)) {
+            const customerConn = this.activeConnections.get(customerId);
+            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_status_update', {
+              requestId,
+              status,
+              message,
+              timestamp: Date.now()
+            });
+            console.log(`📤 Status update sent to customer: ${customerId}`);
+          }
+
+          // Also broadcast to tracking room if exists
+          const trackingRoom = `tracking_${requestId}`;
+          if (this.io.sockets.adapter.rooms.has(trackingRoom)) {
+            this.io.to(trackingRoom).emit('request_status_update', {
+              requestId,
+              status,
+              message,
+              timestamp: Date.now()
+            });
+          }
+
+        } catch (error) {
+          console.error('Request status update error:', error);
+        }
+      });
+
+      // ==================== PAYMENT UPDATES ====================
+      socket.on('payment_status', (data) => {
+        try {
+          const { requestId, status, method } = data;
+          
+          if (!requestId || !status) {
+            return;
+          }
+
+          console.log(`💰 Payment status: ${requestId} -> ${status} (${method || 'no-method'})`);
+
+          // Find tracking session to get customer and partner IDs
+          const session = this.trackingSessions.get(requestId);
+          if (session) {
+            // Notify customer
+            if (session.customerId && this.activeConnections.has(session.customerId)) {
+              const customerConn = this.activeConnections.get(session.customerId);
+              this.io.to(`${customerConn.userType}_${session.customerId}`).emit('payment_status', {
+                requestId,
+                status,
+                method,
+                timestamp: Date.now()
+              });
+            }
+
+            // Notify partner
+            if (session.partnerId && this.activeConnections.has(session.partnerId)) {
+              const partnerConn = this.activeConnections.get(session.partnerId);
+              this.io.to(`${partnerConn.userType}_${session.partnerId}`).emit('payment_status', {
+                requestId,
+                status,
+                method,
+                timestamp: Date.now()
+              });
+            }
+          }
+
+        } catch (error) {
+          console.error('Payment status update error:', error);
+        }
+      });
+
+      // ==================== PAYMENT CONFIRMATION ====================
+      socket.on('payment_confirmation', (data) => {
+        try {
+          const { requestId, status, amount, method } = data;
+          
+          if (!requestId || !status) {
+            return;
+          }
+
+          console.log(`✅ Payment confirmation: ${requestId} -> ${status} (${method || 'no-method'})`);
+
+          // Find tracking session to get customer and partner IDs
+          const session = this.trackingSessions.get(requestId);
+          if (session) {
+            // Notify customer
+            if (session.customerId && this.activeConnections.has(session.customerId)) {
+              const customerConn = this.activeConnections.get(session.customerId);
+              this.io.to(`${customerConn.userType}_${session.customerId}`).emit('payment_confirmation', {
+                requestId,
+                status,
+                amount,
+                method,
+                timestamp: Date.now()
+              });
+            }
+
+            // Notify partner
+            if (session.partnerId && this.activeConnections.has(session.partnerId)) {
+              const partnerConn = this.activeConnections.get(session.partnerId);
+              this.io.to(`${partnerConn.userType}_${session.partnerId}`).emit('payment_confirmation', {
+                requestId,
+                status,
+                amount,
+                method,
+                timestamp: Date.now()
+              });
+            }
+          }
+
+        } catch (error) {
+          console.error('Payment confirmation error:', error);
+        }
+      });
+
       // ==================== APP STATE UPDATES (BACKGROUND/FOREGROUND) ====================
       socket.on('app_state_change', (data) => {
         try {
@@ -271,6 +396,30 @@ class SocketService {
 
         } catch (error) {
           console.error('Tracking setup error:', error);
+        }
+      });
+
+      socket.on('setup_customer_tracking', (data) => {
+        try {
+          const { requestId, partnerId } = data;
+          
+          if (!requestId || !partnerId) {
+            return;
+          }
+
+          console.log(`📱 Setting up customer tracking for request ${requestId}`);
+
+          // Update tracking session with partner ID
+          if (this.trackingSessions.has(requestId)) {
+            const session = this.trackingSessions.get(requestId);
+            session.partnerId = partnerId;
+            session.lastUpdate = Date.now();
+            
+            console.log(`✅ Customer tracking updated with partner: ${partnerId}`);
+          }
+
+        } catch (error) {
+          console.error('Customer tracking setup error:', error);
         }
       });
 
