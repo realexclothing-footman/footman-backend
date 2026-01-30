@@ -668,7 +668,7 @@ exports.updateRequestStatus = async (req, res) => {
     }
 
     // Emit WebSocket event for status change
-    socketService.notifyCustomer(request.customer_id.toString(), 'request_status_update', {
+    socketService.notifyCustomer(request.customer_id.toString(), 'request_update', {
       requestId: request.id,
       status: status,
       message: message || `Request status changed to ${status}`,
