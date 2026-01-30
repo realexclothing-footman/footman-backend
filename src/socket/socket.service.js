@@ -3,114 +3,64 @@ const { Server } = require('socket.io');
 class SocketService {
   constructor() {
     this.io = null;
-    this.activeConnections = new Map();
-    this.trackingSessions = new Map();
-    this.partnerThrottle = new Map();
-    this.backgroundPartners = new Map();
-    
-    this.THROTTLE_INTERVAL = 3000;
-    this.BACKGROUND_PING_INTERVAL = 30000;
-    this.POSITION_HISTORY_LIMIT = 500;
+    this.activeConnections = new Map(); // userId -> {socketId, userType}
   }
 
   initialize(server) {
     this.io = new Server(server, {
       cors: {
         origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true
+        methods: ["GET", "POST"]
       },
-      transports: ['websocket', 'polling'],
-      pingInterval: 25000,
-      pingTimeout: 60000,
-      connectionStateRecovery: {
-        maxDisconnectionDuration: 2 * 60 * 1000,
-        skipMiddlewares: true
-      }
+      transports: ['websocket'] // PURE WEBSOCKET ONLY. NO POLLING.
     });
 
     this.setupEventHandlers();
-    this.startCleanupInterval();
-    console.log('✅ Enhanced Real-time Socket.io server initialized');
+    console.log('✅ Pure WebSocket Server Initialized (Polling Disabled)');
   }
 
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
-      console.log(`🔌 New connection: ${socket.id}`);
-
+      
       socket.on('authenticate', (data) => {
         try {
-          const { userId, userType, deviceId, appVersion } = data;
-          if (!userId || !userType) {
-            socket.emit('auth_error', { message: 'Missing user data' });
-            return;
-          }
+          const { userId, userType } = data;
+          if (!userId || !userType) return;
 
-          this.activeConnections.set(userId, {
+          const uid = userId.toString();
+          this.activeConnections.set(uid, {
             socketId: socket.id,
-            userType: userType,
-            rooms: new Set(),
-            deviceId: deviceId || 'unknown',
-            appVersion: appVersion || '1.0',
-            lastPing: Date.now(),
-            connectionTime: Date.now(),
-            isBackground: false
+            userType: userType
           });
 
-          const userRoom = `${userType}_${userId}`;
-          socket.join(userRoom);
-          this.activeConnections.get(userId).rooms.add(userRoom);
-          socket.join(`${userType}s_online`);
-
-          socket.emit('authenticated', { 
-            success: true, 
-            socketId: socket.id,
-            userId: userId,
-            serverTime: Date.now(),
-            throttleInterval: this.THROTTLE_INTERVAL
-          });
-
-          console.log(`✅ ${userType.toUpperCase()} ${userId} authenticated`);
-          this.sendPendingUpdates(userId, socket);
-        } catch (error) {
-          console.error('Authentication error:', error);
+          socket.join(`${userType}_${uid}`);
+          socket.emit('authenticated', { success: true });
+          console.log(`✅ ${userType.toUpperCase()} ${uid} connected via WebSocket`);
+        } catch (err) {
+          console.error('Socket Auth Error:', err);
         }
       });
 
       socket.on('request_status_update', (data) => {
-        try {
-          const { requestId, status, message, customerId } = data;
-          if (!requestId || !status) return;
+        const { requestId, status, customerId } = data;
+        if (!requestId || !status) return;
 
-          console.log(`📋 Status Update: ID ${requestId} -> ${status}`);
+        // "APPLE TO APPLE" FIX: Sending 'id' to match Mobile App
+        const payload = {
+          id: requestId,
+          status,
+          timestamp: Date.now()
+        };
 
-          const payload = {
-            id: requestId, // FIXED: Now sending 'id' to match Mobile App
-            status,
-            message,
-            timestamp: Date.now()
-          };
-
-          if (customerId && this.activeConnections.has(customerId)) {
-            const customerConn = this.activeConnections.get(customerId);
-            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_update', payload);
-          }
-
-          const trackingRoom = `tracking_${requestId}`;
-          if (this.io.sockets.adapter.rooms.has(trackingRoom)) {
-            this.io.to(trackingRoom).emit('request_update', payload);
-          }
-        } catch (error) {
-          console.error('Request status update error:', error);
+        if (customerId) {
+          this.notifyCustomer(customerId, 'request_update', payload);
         }
       });
 
-      socket.on('disconnect', (reason) => {
+      socket.on('disconnect', () => {
         for (const [userId, conn] of this.activeConnections.entries()) {
           if (conn.socketId === socket.id) {
-            conn.socketId = null;
-            conn.lastPing = Date.now();
-            console.log(`🔴 ${conn.userType} ${userId} disconnected`);
+            this.activeConnections.delete(userId);
             break;
           }
         }
@@ -118,25 +68,23 @@ class SocketService {
     });
   }
 
-  startCleanupInterval() {
-    setInterval(() => {
-      const now = Date.now();
-      for (const [userId, conn] of this.activeConnections.entries()) {
-        if (now - conn.lastPing > 300000) {
-          this.activeConnections.delete(userId);
-        }
-      }
-    }, 60000);
-  }
-
-  sendPendingUpdates(userId, socket) {}
+  // CONTROLLER HELPERS (Fixes the TypeError)
   notifyUser(userId, event, data) {
-    if (this.activeConnections.has(userId)) {
-      const conn = this.activeConnections.get(userId);
-      this.io.to(`${conn.userType}_${userId}`).emit(event, data);
+    const uid = userId.toString();
+    const conn = this.activeConnections.get(uid);
+    if (conn) {
+      this.io.to(`${conn.userType}_${uid}`).emit(event, data);
       return true;
     }
     return false;
+  }
+
+  notifyCustomer(userId, event, data) {
+    return this.notifyUser(userId, event, data);
+  }
+
+  notifyPartner(userId, event, data) {
+    return this.notifyUser(userId, event, data);
   }
 }
 
