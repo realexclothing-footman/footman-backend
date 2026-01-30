@@ -102,7 +102,7 @@ class SocketService {
           // Forward to customer if customerId provided
           if (customerId && this.activeConnections.has(customerId)) {
             const customerConn = this.activeConnections.get(customerId);
-            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_status_update', {
+            this.io.to(`${customerConn.userType}_${customerId}`).emit('request_update', {
               requestId,
               status,
               message,
@@ -114,7 +114,7 @@ class SocketService {
           // Also broadcast to tracking room if exists
           const trackingRoom = `tracking_${requestId}`;
           if (this.io.sockets.adapter.rooms.has(trackingRoom)) {
-            this.io.to(trackingRoom).emit('request_status_update', {
+            this.io.to(trackingRoom).emit('request_update', {
               requestId,
               status,
               message,
