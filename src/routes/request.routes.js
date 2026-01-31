@@ -20,10 +20,7 @@ router.post('/:id/accept', authMiddleware, footmanController.acceptRequest);
 router.post('/:id/reject', authMiddleware, footmanController.rejectRequest);
 router.get('/footman/active', authMiddleware, footmanController.getMyActiveRequests);
 router.put('/:id/status', authMiddleware, footmanController.updateRequestStatus);
-router.get('/:id/payment/partner-status', authMiddleware, footmanController.getPaymentStatus);
 router.post('/:id/payment/confirm', authMiddleware, footmanController.confirmPaymentReceived);
-router.get('/footman/earnings', authMiddleware, footmanController.getFootmanEarnings);
-router.delete('/cleanup/rejections', authMiddleware, footmanController.cleanupOldRejections);
 
 // ==================== WEBSOCKET & PARTNER DETAILS ====================
 router.post('/partner/location', authMiddleware, requestController.emitPartnerLocation);
