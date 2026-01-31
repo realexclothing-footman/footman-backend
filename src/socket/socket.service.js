@@ -12,11 +12,11 @@ class SocketService {
         origin: "*",
         methods: ["GET", "POST"]
       },
-      transports: ['websocket'] // PURE WEBSOCKET ONLY. NO POLLING.
+      transports: ['websocket']
     });
 
     this.setupEventHandlers();
-    console.log('✅ Pure WebSocket Server Initialized (Polling Disabled)');
+    console.log('✅ Real-time System Initialized (Standardized on ID)');
   }
 
   setupEventHandlers() {
@@ -35,20 +35,19 @@ class SocketService {
 
           socket.join(`${userType}_${uid}`);
           socket.emit('authenticated', { success: true });
-          console.log(`✅ ${userType.toUpperCase()} ${uid} connected via WebSocket`);
+          console.log(`✅ ${userType.toUpperCase()} ${uid} connected`);
         } catch (err) {
           console.error('Socket Auth Error:', err);
         }
       });
 
       socket.on('request_status_update', (data) => {
-        const { requestId, status, customerId } = data;
-        if (!requestId || !status) return;
+        const { id, status, customerId } = data;
+        if (!id || !status) return;
 
-        // "APPLE TO APPLE" FIX: Sending 'id' to match Mobile App
         const payload = {
-          id: requestId,
-          status,
+          id: id,
+          status: status,
           timestamp: Date.now()
         };
 
@@ -68,12 +67,11 @@ class SocketService {
     });
   }
 
-  // CONTROLLER HELPERS (Fixes the TypeError)
   notifyUser(userId, event, data) {
-    const uid = userId.toString();
-    const conn = this.activeConnections.get(uid);
-    if (conn) {
-      this.io.to(`${conn.userType}_${uid}`).emit(event, data);
+    if (this.io) {
+      const uid = userId.toString();
+      // Broadly emit to the room created during auth
+      this.io.to(`customer_${uid}`).to(`delivery_${uid}`).emit(event, data);
       return true;
     }
     return false;
