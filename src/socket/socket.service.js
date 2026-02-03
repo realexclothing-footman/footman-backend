@@ -12,7 +12,6 @@ class SocketService {
     this.socketIndex = new Map();
 
     // requestId -> { customerId, partnerId }
-    // (keeps routing fast; DB is still used as fallback)
     this.requestIndex = new Map();
   }
 
@@ -22,7 +21,6 @@ class SocketService {
         origin: '*',
         methods: ['GET', 'POST'],
       },
-      // WebSocket only (no HTTP polling)
       transports: ['websocket'],
     });
 
@@ -43,13 +41,11 @@ class SocketService {
           this.activeConnections.set(uid, { socketId: socket.id, userType });
           this.socketIndex.set(socket.id, { userId: uid, userType });
 
-          // personal room
           socket.join(`${userType}_${uid}`);
 
           socket.emit('authenticated', { success: true });
           console.log(`✅ ${userType.toUpperCase()} ${uid} connected`);
 
-          // if customer reconnects, push pending updates
           if (userType === 'customer') {
             await this.sendPendingUpdatesToCustomer(uid, socket);
           }
@@ -59,32 +55,58 @@ class SocketService {
       });
 
       // ---------------- REQUEST STATUS ----------------
-      // partner emits: { id, status, customerId? }
+      // partner emits: { id, status, customerId?, partnerId? }
       socket.on('request_status_update', async (data) => {
         try {
-          const { id, status, customerId } = data || {};
+          const { id, status, customerId, partnerId } = data || {};
           if (!id || !status) return;
 
           const requestId = id.toString();
 
-          // Resolve customerId (prefer payload -> cache -> DB)
+          // Resolve customerId (payload -> cache -> DB)
           let targetCustomerId = customerId ? customerId.toString() : null;
 
           const cached = this.requestIndex.get(requestId);
           if (!targetCustomerId && cached?.customerId) targetCustomerId = cached.customerId;
 
-          if (!targetCustomerId) {
+          // Resolve partnerId (payload -> cache -> DB)
+          let targetPartnerId = partnerId ? partnerId.toString() : null;
+          if (!targetPartnerId && cached?.partnerId) targetPartnerId = cached.partnerId;
+
+          // Pull DB once (also to get partner name/phone for instant UI)
+          let partnerName = null;
+          let partnerPhone = null;
+
+          if (!targetCustomerId || !targetPartnerId || status === 'accepted_by_partner' || status === 'ongoing') {
             const req = await Request.findOne({
               where: { id: requestId },
-              attributes: ['customer_id', 'footman_id'],
+              attributes: ['customer_id', 'footman_id', 'request_status'],
+              include: [
+                {
+                  association: 'footman',
+                  attributes: ['id', 'full_name', 'phone'],
+                },
+              ],
             });
 
-            if (req?.customer_id) targetCustomerId = req.customer_id.toString();
+            if (!targetCustomerId && req?.customer_id) targetCustomerId = req.customer_id.toString();
 
-            // keep cache warm
+            // partner id from include OR footman_id
+            if (!targetPartnerId) {
+              if (req?.footman?.id) targetPartnerId = req.footman.id.toString();
+              else if (req?.footman_id) targetPartnerId = req.footman_id.toString();
+            }
+
+            // name/phone (only if available)
+            if (req?.footman) {
+              partnerName = req.footman.full_name || null;
+              partnerPhone = req.footman.phone || null;
+            }
+
+            // warm cache
             this.requestIndex.set(requestId, {
-              customerId: req?.customer_id ? req.customer_id.toString() : cached?.customerId || null,
-              partnerId: req?.footman_id ? req.footman_id.toString() : cached?.partnerId || null,
+              customerId: targetCustomerId || cached?.customerId || null,
+              partnerId: targetPartnerId || cached?.partnerId || null,
             });
           }
 
@@ -93,16 +115,23 @@ class SocketService {
             return;
           }
 
+          // For searching states, we intentionally clear partner info
+          const searchingStates = new Set(['searching', 'searching_after_forward']);
+          const shouldClearPartner = searchingStates.has(status);
+
           const payload = {
             requestId,
             status,
+            partnerId: shouldClearPartner ? null : (targetPartnerId || null),
+            partnerName: shouldClearPartner ? null : (partnerName || null),
+            partnerPhone: shouldClearPartner ? null : (partnerPhone || null),
             timestamp: Date.now(),
           };
 
           // customer app listens: 'request_update'
           this.notifyCustomer(targetCustomerId, 'request_update', payload);
 
-          // also send into request room if joined
+          // request room (if joined)
           this.io.to(`request_${requestId}`).emit('request_update', payload);
 
           console.log(`📋 Status forwarded: ${status} req=${requestId} -> customer=${targetCustomerId}`);
@@ -123,13 +152,10 @@ class SocketService {
           const cId = customerId.toString();
           const pId = partnerId.toString();
 
-          // cache routing for this request
           this.requestIndex.set(requestId, { customerId: cId, partnerId: pId });
 
-          // join sender socket to request room
           socket.join(`request_${requestId}`);
 
-          // if other side is connected, force-join them too
           const cConn = this.activeConnections.get(cId);
           const pConn = this.activeConnections.get(pId);
 
@@ -147,7 +173,6 @@ class SocketService {
             timestamp: Date.now(),
           };
 
-          // both apps listen: 'tracking_started'
           this.notifyCustomer(cId, 'tracking_started', trackingData);
           this.notifyPartner(pId, 'tracking_started', trackingData);
           this.io.to(`request_${requestId}`).emit('tracking_started', trackingData);
@@ -168,7 +193,6 @@ class SocketService {
           const pId = partnerId.toString();
           const requestId = id ? id.toString() : null;
 
-          // If request room exists, broadcast there (fast + no DB)
           if (requestId) {
             const locationData = {
               partnerId: pId,
@@ -180,15 +204,12 @@ class SocketService {
               timestamp: Date.now(),
             };
 
-            // customer app listens: 'partner_location'
             this.io.to(`request_${requestId}`).emit('partner_location', locationData);
 
-            // also direct-to-customer if we know them
             const cached = this.requestIndex.get(requestId);
             if (cached?.customerId) {
               this.notifyCustomer(cached.customerId, 'partner_location', locationData);
             } else {
-              // fallback DB once to warm cache
               const req = await Request.findOne({
                 where: { id: requestId },
                 attributes: ['customer_id', 'footman_id'],
@@ -217,7 +238,6 @@ class SocketService {
 
           const requestId = id.toString();
 
-          // resolve both sides
           let cached = this.requestIndex.get(requestId);
 
           if (!cached?.customerId || !cached?.partnerId) {
@@ -283,10 +303,7 @@ class SocketService {
             timestamp: Date.now(),
           };
 
-          // customer listens: 'payment_status'
           if (cached?.customerId) this.notifyCustomer(cached.customerId, 'payment_status', payload);
-
-          // partner also listens: 'payment_status' (your partner app uses this too)
           if (cached?.partnerId) this.notifyPartner(cached.partnerId, 'payment_status', payload);
 
           this.io.to(`request_${requestId}`).emit('payment_status', payload);
@@ -327,18 +344,20 @@ class SocketService {
       });
 
       for (const req of activeRequests) {
-        // warm cache for routing + tracking
         const requestId = req.id.toString();
         const cId = req.customer_id ? req.customer_id.toString() : customerId.toString();
-        const pId = req.footman?.id ? req.footman.id.toString() : (req.footman_id ? req.footman_id.toString() : null);
+        const pId = req.footman?.id
+          ? req.footman.id.toString()
+          : (req.footman_id ? req.footman_id.toString() : null);
 
         this.requestIndex.set(requestId, { customerId: cId, partnerId: pId });
 
         socket.emit('request_update', {
           requestId,
           status: req.request_status,
-          partnerId: req.footman?.id,
-          partnerName: req.footman?.full_name,
+          partnerId: req.footman?.id ? req.footman.id.toString() : (pId || null),
+          partnerName: req.footman?.full_name || null,
+          partnerPhone: req.footman?.phone || null,
           timestamp: Date.now(),
         });
 
@@ -349,7 +368,6 @@ class SocketService {
     }
   }
 
-  // ---- targeted emits ----
   notifyCustomer(userId, event, data) {
     if (!this.io) return false;
     const uid = userId.toString();
