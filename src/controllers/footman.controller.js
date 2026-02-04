@@ -86,7 +86,7 @@ exports.acceptRequest = async (req, res) => {
     });
 
     socketService.notifyCustomer(request.customer_id, 'request_update', {
-      requestId: request.id,
+      id: request.id,
       status: 'accepted_by_partner',
       footman: { id: user.id, name: user.full_name, phone: user.phone }
     });
@@ -111,7 +111,7 @@ exports.rejectRequest = async (req, res) => {
       await request.update({ request_status: 'searching', assigned_footman_id: null, accepted_at: null });
       
       socketService.notifyCustomer(request.customer_id, 'request_update', {
-        requestId: request.id,
+        id: request.id,
         status: 'searching'
       });
     }
@@ -141,7 +141,7 @@ exports.updateRequestStatus = async (req, res) => {
     await request.update(updateData);
 
     socketService.notifyCustomer(request.customer_id, 'request_update', {
-      requestId: request.id,
+      id: request.id,
       status: status,
       payment_flow_state: request.payment_flow_state
     });
@@ -169,7 +169,7 @@ exports.confirmPaymentReceived = async (req, res) => {
     });
 
     socketService.notifyCustomer(request.customer_id, 'request_update', {
-      requestId: request.id,
+      id: request.id,
       status: 'completed',
       payment_flow_state: 'payment_confirmed'
     });
@@ -177,7 +177,7 @@ exports.confirmPaymentReceived = async (req, res) => {
     setTimeout(async () => {
       await request.update({ payment_flow_state: 'fully_completed', payment_lock: false });
       socketService.notifyCustomer(request.customer_id, 'request_update', {
-        requestId: request.id,
+        id: request.id,
         status: 'completed',
         payment_flow_state: 'fully_completed'
       });
