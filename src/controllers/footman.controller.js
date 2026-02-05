@@ -150,13 +150,36 @@ exports.rejectRequest = async (req, res) => {
     const request = await Request.findByPk(id);
     if (!request) return res.status(404).json({ success: false, message: 'Not found' });
 
-    // Create rejection record
-    await RequestRejection.create({
-      request_id: id,
-      footman_id: footman_id,
-      reason: reason,
-      notes: reason === 'forward' ? 'Partner forwarded request to others' : null
+    // Check if rejection already exists for this request and footman
+    const existingRejection = await RequestRejection.findOne({
+      where: {
+        request_id: id,
+        footman_id: footman_id
+      }
     });
+
+    if (existingRejection) {
+      // Update existing rejection with new reason if different
+      if (existingRejection.reason !== reason) {
+        await existingRejection.update({
+          reason: reason,
+          notes: reason === 'forward' ? 'Partner forwarded request to others' : null,
+          created_at: new Date() // Update timestamp
+        });
+        console.log(`✅ Updated existing rejection for request ${id}, partner ${footman_id} to reason: ${reason}`);
+      } else {
+        console.log(`ℹ️ Rejection already exists for request ${id}, partner ${footman_id} with reason: ${reason}`);
+      }
+    } else {
+      // Create new rejection record
+      await RequestRejection.create({
+        request_id: id,
+        footman_id: footman_id,
+        reason: reason,
+        notes: reason === 'forward' ? 'Partner forwarded request to others' : null
+      });
+      console.log(`✅ Created rejection for request ${id}, partner ${footman_id} with reason: ${reason}`);
+    }
 
     // If forward reason and partner had accepted the request
     if (reason === 'forward' && request.request_status === 'accepted_by_partner' && request.assigned_footman_id === footman_id) {
