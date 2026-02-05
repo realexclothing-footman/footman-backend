@@ -108,11 +108,11 @@ exports.rejectRequest = async (req, res) => {
       await RequestRejection.createRejection(id, footman_id, 'busy');
     } else if (request.request_status === 'accepted_by_partner' && request.assigned_footman_id === footman_id) {
       await RequestRejection.createRejection(id, footman_id, 'forward');
-      await request.update({ request_status: 'searching_after_forward', assigned_footman_id: null, accepted_at: null });
+      await request.update({ request_status: 'searching', assigned_footman_id: null, accepted_at: null });
       
       socketService.notifyCustomer(request.customer_id, 'request_update', {
         id: request.id,
-        status: 'searching_after_forward'
+        status: 'searching'
       });
     }
     res.json({ success: true, message: 'Rejected' });
