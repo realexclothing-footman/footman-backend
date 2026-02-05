@@ -5,6 +5,8 @@ const { Sequelize } = require('sequelize');
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
 const socketService = require('../socket/socket.service');
+const firebaseService = require('../services/firebase.service');
+const MatchingService = require('../services/matching.service');
 
 // ==================== FOOTMAN (PARTNER) CONTROLLERS ====================
 
@@ -20,7 +22,7 @@ exports.getAvailableRequests = async (req, res) => {
     }
 
     const requests = await Request.findAll({
-      where: { request_status: 'searching', assigned_footman_id: null },
+      where: { request_status: 'searching' },
       include: [{ association: 'customer', attributes: ['id', 'full_name', 'phone'] }],
       order: [['created_at', 'ASC']]
     });
@@ -31,6 +33,7 @@ exports.getAvailableRequests = async (req, res) => {
       const distance = this._calculateDistance(user.latitude, user.longitude, request.pickup_lat, request.pickup_lng);
       if (distance > 1) continue;
       
+      // Check if this footman has rejected this specific request recently
       const recentRejection = await RequestRejection.findOne({
         where: {
           request_id: request.id,
@@ -39,6 +42,25 @@ exports.getAvailableRequests = async (req, res) => {
         }
       });
       if (recentRejection) continue;
+      
+      // Check if this footman has forwarded any request from this customer recently
+      const forwardedFromCustomer = await RequestRejection.findOne({
+        where: {
+          footman_id: footman_id,
+          reason: 'forward',
+          created_at: { [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) }
+        },
+        include: [{
+          model: Request,
+          as: 'request',
+          where: { customer_id: request.customer_id }
+        }]
+      });
+      
+      if (forwardedFromCustomer) {
+        console.log(`🚫 Partner ${footman_id} blocked from customer ${request.customer_id} due to recent forward`);
+        continue;
+      }
       
       request.distance_km = distance;
       nearbyRequests.push(request);
@@ -58,6 +80,7 @@ exports.getAvailableRequests = async (req, res) => {
 
     res.json({ success: true, data: { requests: formattedRequests } });
   } catch (error) {
+    console.error('Get available requests error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch requests' });
   }
 };
@@ -71,6 +94,27 @@ exports.acceptRequest = async (req, res) => {
 
     if (!request || request.request_status !== 'searching') {
       return res.status(400).json({ success: false, message: 'Request no longer available' });
+    }
+
+    // Check if this footman has forwarded from this customer recently
+    const forwardedFromCustomer = await RequestRejection.findOne({
+      where: {
+        footman_id: footman_id,
+        reason: 'forward',
+        created_at: { [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) }
+      },
+      include: [{
+        model: Request,
+        as: 'request',
+        where: { customer_id: request.customer_id }
+      }]
+    });
+    
+    if (forwardedFromCustomer) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot accept requests from this customer for 10 minutes after forwarding a previous request'
+      });
     }
 
     const distance = this._calculateDistance(user.latitude, user.longitude, request.pickup_lat, request.pickup_lng);
@@ -93,6 +137,7 @@ exports.acceptRequest = async (req, res) => {
 
     res.json({ success: true, message: 'Accepted!', data: { request } });
   } catch (error) {
+    console.error('Accept request error:', error);
     res.status(400).json({ success: false, message: 'Failed to accept' });
   }
 };
@@ -101,22 +146,115 @@ exports.rejectRequest = async (req, res) => {
   try {
     const { id } = req.params;
     const footman_id = req.user.id;
+    const { reason = 'busy' } = req.body; // Allow custom reason
     const request = await Request.findByPk(id);
     if (!request) return res.status(404).json({ success: false, message: 'Not found' });
 
-    if (request.request_status === 'searching') {
-      await RequestRejection.createRejection(id, footman_id, 'busy');
-    } else if (request.request_status === 'accepted_by_partner' && request.assigned_footman_id === footman_id) {
-      await RequestRejection.createRejection(id, footman_id, 'forward');
-      await request.update({ request_status: 'searching', assigned_footman_id: null, accepted_at: null });
+    // Create rejection record
+    await RequestRejection.create({
+      request_id: id,
+      footman_id: footman_id,
+      reason: reason,
+      notes: reason === 'forward' ? 'Partner forwarded request to others' : null
+    });
+
+    // If forward reason and partner had accepted the request
+    if (reason === 'forward' && request.request_status === 'accepted_by_partner' && request.assigned_footman_id === footman_id) {
+      console.log(`=== PARTNER ${footman_id} FORWARDING ACCEPTED REQUEST ${id} ===`);
+      console.log(`✅ Partner ${footman_id} blocked from customer ${request.customer_id} for 10 minutes`);
       
-      socketService.notifyCustomer(request.customer_id, 'request_update', {
-        id: request.id,
-        status: 'searching'
+      // Update request status back to searching
+      await request.update({
+        request_status: 'searching',
+        assigned_footman_id: null,
+        accepted_at: null,
+        updated_at: new Date()
+      });
+
+      // Notify customer via WebSocket
+      socketService.notifyCustomer(request.customer_id, 'request_forwarded', {
+        requestId: request.id,
+        status: 'searching',
+        message: 'Your Footman forwarded the request. Searching for another Footman...',
+        timestamp: Date.now(),
+        partnerId: footman_id
+      });
+
+      // Send Firebase notification to customer
+      try {
+        await firebaseService.sendNotificationToUser(
+          request.customer_id,
+          {
+            title: '🔄 Request Forwarded',
+            body: 'Your Footman forwarded the request. Searching for another available Footman...'
+          },
+          {
+            type: 'request_forwarded',
+            request_id: id.toString(),
+            partner_id: footman_id.toString(),
+            timestamp: Date.now().toString()
+          }
+        );
+      } catch (firebaseError) {
+        console.error('❌ Firebase forward notification failed:', firebaseError.message);
+      }
+
+      // Re-broadcast to other partners
+      const nearbyFootmen = await MatchingService.findNearbyFootmen(
+        request.pickup_lat,
+        request.pickup_lng,
+        1,
+        10
+      );
+
+      // Filter out this partner
+      const availableFootmen = nearbyFootmen.filter(footman => 
+        footman.id !== footman_id
+      );
+
+      // Broadcast to new partners
+      const broadcastData = {
+        requestId: request.id,
+        customerId: request.customer_id,
+        distance: request.distance_km,
+        price: request.base_price,
+        pickupLocation: { lat: request.pickup_lat, lng: request.pickup_lng },
+        timestamp: Date.now(),
+        isForwarded: true
+      };
+
+      let notifiedCount = 0;
+      for (const footman of availableFootmen) {
+        try {
+          const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
+          if (wsNotified) {
+            notifiedCount++;
+            console.log(`📤 Forwarded request sent to partner ${footman.id}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to notify partner ${footman.id}:`, error.message);
+        }
+      }
+
+      console.log(`📢 Forwarded request ${request.id} sent to ${notifiedCount} new partners`);
+      
+      return res.json({
+        success: true,
+        message: 'Request forwarded successfully',
+        data: {
+          request_id: request.id,
+          customer_id: request.customer_id,
+          blocked_duration_minutes: 10,
+          new_search_started: true,
+          notified_new_partners: notifiedCount
+        }
       });
     }
-    res.json({ success: true, message: 'Rejected' });
+
+    // Regular rejection (busy or other reasons)
+    res.json({ success: true, message: 'Request rejected' });
   } catch (error) {
+    console.error('Reject request error:', error);
     res.status(400).json({ success: false, message: 'Reject failed' });
   }
 };
