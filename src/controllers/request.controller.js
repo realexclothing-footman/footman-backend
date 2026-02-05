@@ -3,6 +3,8 @@ const FootmanService = require('../services/footman.service');
 const MatchingService = require('../services/matching.service');
 const socketService = require('../socket/socket.service');
 const firebaseService = require('../services/firebase.service');
+const RequestRejection = require('../models/RequestRejection');
+const { Op } = require('sequelize');
 
 // ==================== CUSTOMER REQUEST CONTROLLERS ====================
 
@@ -28,18 +30,39 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // Get ALL nearby footmen (not just the nearest)
+    // Check for blocked partners (who forwarded within last 10 minutes)
+    const blockedPartners = await RequestRejection.findAll({
+      where: {
+        customer_id: customer_id,
+        reason: 'forward',
+        created_at: { [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) } // Last 10 minutes
+      },
+      attributes: ['footman_id']
+    });
+
+    const blockedPartnerIds = blockedPartners.map(r => r.footman_id);
+    console.log(`Blocked partner IDs for customer ${customer_id}:`, blockedPartnerIds);
+
+    // Get ALL nearby footmen (not just the nearest), excluding blocked partners
     const nearbyFootmen = await MatchingService.findNearbyFootmen(lat, lng, 1, 10);
     
-    if (!nearbyFootmen || nearbyFootmen.length === 0) {
+    // Filter out blocked partners
+    const filteredFootmen = nearbyFootmen.filter(footman => 
+      !blockedPartnerIds.includes(footman.id)
+    );
+    
+    console.log(`Total nearby: ${nearbyFootmen.length}, After block filter: ${filteredFootmen.length}`);
+
+    if (!filteredFootmen || filteredFootmen.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'No footmen available within 1KM radius'
+        message: 'No footmen available within 1KM radius',
+        blocked_partners: blockedPartnerIds.length
       });
     }
 
     // Calculate price based on nearest footman distance
-    const nearestDistance = parseFloat(nearbyFootmen[0].distance_km);
+    const nearestDistance = parseFloat(filteredFootmen[0].distance_km);
     const PricingService = require('../services/pricing.service');
     const price = PricingService.calculatePrice(nearestDistance);
     
@@ -70,7 +93,7 @@ exports.createRequest = async (req, res) => {
       timestamp: Date.now()
     });
 
-    // BROADCAST TO ALL NEARBY PARTNERS via WebSocket
+    // BROADCAST TO ALL NEARBY PARTNERS via WebSocket (excluding blocked partners)
     const broadcastData = {
       requestId: request.id,
       customerId: customer_id,
@@ -82,7 +105,7 @@ exports.createRequest = async (req, res) => {
 
     // Send to each nearby footman via WebSocket
     const notifiedPartners = [];
-    for (const footman of nearbyFootmen) {
+    for (const footman of filteredFootmen) {
       try {
         // WebSocket notification
         const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
@@ -119,6 +142,7 @@ exports.createRequest = async (req, res) => {
     }
 
     console.log(`📢 Request ${request.id} broadcasted to ${notifiedPartners.length} nearby partners`);
+    console.log(`🚫 Blocked ${blockedPartnerIds.length} partners from receiving this request`);
 
     res.status(201).json({
       success: true,
@@ -126,7 +150,7 @@ exports.createRequest = async (req, res) => {
       data: {
         request: {
           ...request.toJSON(),
-          nearby_footmen: nearbyFootmen.map(f => ({
+          nearby_footmen: filteredFootmen.map(f => ({
             id: f.id,
             name: f.full_name,
             distance: f.distance_km
@@ -138,7 +162,8 @@ exports.createRequest = async (req, res) => {
         broadcast_details: {
           radius_km: 1,
           max_partners: 10,
-          actual_notified: notifiedPartners.length
+          actual_notified: notifiedPartners.length,
+          blocked_partners: blockedPartnerIds.length
         }
       }
     });
@@ -223,7 +248,7 @@ exports.getRequestDetails = async (req, res) => {
 };
 
 /**
- * 4. CANCEL REQUEST
+ * 4. CANCEL REQUEST - CUSTOMER CAN CANCEL ANYTIME IN SEARCH MODE
  */
 exports.cancelRequest = async (req, res) => {
   try {
@@ -332,7 +357,184 @@ exports.getNearbyFootmen = async (req, res) => {
 };
 
 /**
- * NEW 6. GET PAYMENT STATUS FOR CUSTOMER
+ * NEW: PARTNER FORWARD REQUEST FUNCTION
+ * When partner forwards request, they are blocked from that customer for 10 minutes
+ * Request goes back to searching status
+ * Customer can cancel if they want
+ */
+exports.forwardRequest = async (req, res) => {
+  try {
+    const partner_id = req.user.id;
+    const { request_id } = req.body;
+
+    console.log(`=== FORWARD REQUEST: Partner ${partner_id} forwarding request ${request_id} ===`);
+
+    // Find the request
+    const request = await Request.findOne({
+      where: { id: request_id },
+      include: [
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ]
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    // Check if this partner has already forwarded this request recently
+    const existingForward = await RequestRejection.findOne({
+      where: {
+        request_id: request_id,
+        footman_id: partner_id,
+        reason: 'forward'
+      }
+    });
+
+    if (existingForward) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already forwarded this request'
+      });
+    }
+
+    // Create rejection record with 'forward' reason
+    await RequestRejection.create({
+      request_id: request_id,
+      footman_id: partner_id,
+      customer_id: request.customer_id,
+      reason: 'forward',
+      notes: 'Partner forwarded request to others'
+    });
+
+    console.log(`✅ Partner ${partner_id} blocked from customer ${request.customer_id} for 10 minutes`);
+
+    // Update request status back to 'searching' so it can be sent to other partners
+    await request.update({
+      request_status: 'searching',
+      footman_id: null,
+      nearest_footman_id: null,
+      updated_at: new Date()
+    });
+
+    // Notify customer via WebSocket
+    socketService.notifyCustomer(request.customer_id.toString(), 'request_forwarded', {
+      requestId: request.id,
+      status: 'searching',
+      message: 'A Footman forwarded your request. Searching for another Footman...',
+      timestamp: Date.now(),
+      partnerId: partner_id
+    });
+
+    // Send notification to customer app
+    try {
+      await firebaseService.sendNotificationToUser(
+        request.customer_id,
+        {
+          title: '🔄 Request Forwarded',
+          body: 'A Footman forwarded your request. Searching for another available Footman...'
+        },
+        {
+          type: 'request_forwarded',
+          request_id: request_id.toString(),
+          partner_id: partner_id.toString(),
+          timestamp: Date.now().toString()
+        }
+      );
+      console.log(`📤 Forward notification sent to customer ${request.customer_id}`);
+    } catch (firebaseError) {
+      console.error('❌ Firebase forward notification failed:', firebaseError.message);
+    }
+
+    // Now find new partners (excluding this partner)
+    const blockedPartners = [partner_id]; // This partner is now blocked
+    
+    const nearbyFootmen = await MatchingService.findNearbyFootmen(
+      request.pickup_lat,
+      request.pickup_lng,
+      1,
+      10
+    );
+
+    // Filter out this partner
+    const availableFootmen = nearbyFootmen.filter(footman => 
+      !blockedPartners.includes(footman.id)
+    );
+
+    // Broadcast to new partners
+    const broadcastData = {
+      requestId: request.id,
+      customerId: request.customer_id,
+      distance: request.distance_km,
+      price: request.base_price,
+      pickupLocation: { lat: request.pickup_lat, lng: request.pickup_lng },
+      timestamp: Date.now(),
+      isForwarded: true
+    };
+
+    let notifiedCount = 0;
+    for (const footman of availableFootmen) {
+      try {
+        // WebSocket notification
+        const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
+        
+        // Firebase push notification
+        await firebaseService.sendNotificationToUser(
+          footman.id,
+          firebaseService.NotificationTemplates.newRequest(
+            request.distance_km,
+            request.base_price
+          ),
+          {
+            type: 'new_request',
+            request_id: request.id.toString(),
+            distance: request.distance_km.toString(),
+            price: request.base_price.toString(),
+            customer_id: request.customer_id.toString(),
+            timestamp: Date.now().toString(),
+            forwarded: 'true'
+          }
+        );
+        
+        if (wsNotified) {
+          notifiedCount++;
+          console.log(`📤 Forwarded request sent to partner ${footman.id}`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to notify partner ${footman.id}:`, error.message);
+      }
+    }
+
+    console.log(`📢 Forwarded request ${request.id} sent to ${notifiedCount} new partners`);
+
+    res.json({
+      success: true,
+      message: 'Request forwarded successfully',
+      data: {
+        request_id: request.id,
+        customer_id: request.customer_id,
+        blocked_duration_minutes: 10,
+        new_search_started: true,
+        notified_new_partners: notifiedCount
+      }
+    });
+
+  } catch (error) {
+    console.error('Forward request error:', error);
+    res.status(400).json({
+      success: false,
+      message: 'Failed to forward request'
+    });
+  }
+};
+
+/**
+ * 6. GET PAYMENT STATUS FOR CUSTOMER
  */
 exports.getCustomerPaymentStatus = async (req, res) => {
   try {
@@ -386,7 +588,7 @@ exports.getCustomerPaymentStatus = async (req, res) => {
 };
 
 /**
- * NEW 7. SELECT PAYMENT METHOD
+ * 7. SELECT PAYMENT METHOD
  */
 exports.selectPaymentMethod = async (req, res) => {
   try {
@@ -482,7 +684,7 @@ exports.selectPaymentMethod = async (req, res) => {
 };
 
 /**
- * NEW 8. CHECK IF NEED TO SHOW PAYMENT SCREEN
+ * 8. CHECK IF NEED TO SHOW PAYMENT SCREEN
  */
 exports.checkPaymentScreen = async (req, res) => {
   try {
@@ -566,7 +768,7 @@ exports.emitPartnerLocation = async (req, res) => {
       longitude,
       bearing: bearing || 0,
       speed: speed || 0,
-      requestId: request.id,
+      requestId: request_id,
       timestamp: Date.now()
     });
 
@@ -750,7 +952,7 @@ exports.updateRequestStatus = async (req, res) => {
 };
 
 /**
- * NEW 11. GET REQUEST DETAILS FOR PARTNER (includes customer ID for tracking)
+ * 11. GET REQUEST DETAILS FOR PARTNER (includes customer ID for tracking)
  */
 exports.getRequestDetailsForPartner = async (req, res) => {
   try {
