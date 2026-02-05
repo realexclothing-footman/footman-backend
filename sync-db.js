@@ -9,6 +9,27 @@ async function syncDatabase() {
     await sequelize.authenticate();
     console.log('✅ Database connection established');
     
+    // First, check and add missing customer_id column if needed
+    try {
+      const checkResult = await sequelize.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'request_rejections' 
+        AND column_name = 'customer_id'
+      `);
+      
+      if (checkResult[0].length === 0) {
+        console.log('➕ Adding missing customer_id column to request_rejections...');
+        await sequelize.query(`
+          ALTER TABLE request_rejections 
+          ADD COLUMN customer_id INTEGER REFERENCES users(id)
+        `);
+        console.log('✅ customer_id column added');
+      }
+    } catch (colError) {
+      console.log('⚠️ Column check/update:', colError.message);
+    }
+    
     // Sync all models
     await sequelize.sync({ alter: true });
     console.log('✅ Database synchronized successfully');
