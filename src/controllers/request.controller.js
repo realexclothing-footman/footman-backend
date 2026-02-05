@@ -334,7 +334,7 @@ exports.getNearbyFootmen = async (req, res) => {
 };
 
 /**
- * NEW: PARTNER FORWARD REQUEST FUNCTION
+ * FIXED: PARTNER FORWARD REQUEST FUNCTION
  * When partner forwards request, they are blocked from that customer for 10 minutes
  * Request goes back to searching status
  * Customer can cancel if they want
@@ -342,14 +342,13 @@ exports.getNearbyFootmen = async (req, res) => {
 exports.forwardRequest = async (req, res) => {
   try {
     const partner_id = req.user.id;
-    const { request_id } = req.body;
+    const { id } = req.params;  // Get request_id from URL params, not body
 
-    console.log(`=== FORWARD REQUEST: Partner ${partner_id} forwarding request ${request_id} ===`);
+    console.log(`=== FORWARD REQUEST: Partner ${partner_id} forwarding request ${id} ===`);
 
-    // Find the request to get customer_id
+    // Find the FULL request object with all fields
     const request = await Request.findOne({
-      where: { id: request_id },
-      attributes: ['id', 'customer_id', 'request_status', 'footman_id']
+      where: { id: id }
     });
 
     if (!request) {
@@ -359,10 +358,18 @@ exports.forwardRequest = async (req, res) => {
       });
     }
 
+    // Check if partner has accepted this request
+    if (request.request_status !== 'accepted_by_partner' || request.footman_id !== partner_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'You can only forward requests you have accepted'
+      });
+    }
+
     // Check if this partner has already forwarded this request recently
     const existingForward = await RequestRejection.findOne({
       where: {
-        request_id: request_id,
+        request_id: id,
         footman_id: partner_id,
         reason: 'forward'
       }
@@ -377,90 +384,30 @@ exports.forwardRequest = async (req, res) => {
 
     // Create rejection record with 'forward' reason
     await RequestRejection.create({
-      request_id: request_id,
+      request_id: id,
       footman_id: partner_id,
       reason: 'forward',
       notes: 'Partner forwarded request to others'
     });
 
-    console.log(`✅ Partner ${partner_id} blocked from request ${request_id} for 10 minutes`);
+    console.log(`✅ Partner ${partner_id} blocked from request ${id} for 10 minutes`);
 
-    // Update request status back to 'searching' so it can be sent to other partners
+    // Update request status back to 'searching'
     await request.update({
       request_status: 'searching',
       footman_id: null,
+      nearest_footman_id: null,
       updated_at: new Date()
     });
 
-    // Notify customer via WebSocket
-    socketService.notifyCustomer(request.customer_id.toString(), 'request_forwarded', {
-      requestId: request.id,
+    // Notify customer via WebSocket - use same event as rejectRequest
+    socketService.notifyCustomer(request.customer_id.toString(), 'request_update', {
+      id: request.id,
       status: 'searching',
-      message: 'A Footman forwarded your request. Searching for another Footman...',
-      timestamp: Date.now(),
-      partnerId: partner_id
+      message: 'Footman forwarded your request. Searching for another Footman...'
     });
 
-    // Send notification to customer app
-    try {
-      await firebaseService.sendNotificationToUser(
-        request.customer_id,
-        {
-          title: '🔄 Request Forwarded',
-          body: 'A Footman forwarded your request. Searching for another available Footman...'
-        },
-        {
-          type: 'request_forwarded',
-          request_id: request_id.toString(),
-          partner_id: partner_id.toString(),
-          timestamp: Date.now().toString()
-        }
-      );
-      console.log(`📤 Forward notification sent to customer ${request.customer_id}`);
-    } catch (firebaseError) {
-      console.error('❌ Firebase forward notification failed:', firebaseError.message);
-    }
-
-    // Now find new partners (excluding this partner)
-    const nearbyFootmen = await MatchingService.findNearbyFootmen(
-      request.pickup_lat,
-      request.pickup_lng,
-      1,
-      10
-    );
-
-    // Filter out this partner
-    const availableFootmen = nearbyFootmen.filter(footman => 
-      footman.id !== partner_id
-    );
-
-    // Broadcast to new partners
-    const broadcastData = {
-      requestId: request.id,
-      customerId: request.customer_id,
-      distance: request.distance_km,
-      price: request.base_price,
-      pickupLocation: { lat: request.pickup_lat, lng: request.pickup_lng },
-      timestamp: Date.now(),
-      isForwarded: true
-    };
-
-    let notifiedCount = 0;
-    for (const footman of availableFootmen) {
-      try {
-        // WebSocket notification
-        const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
-        
-        if (wsNotified) {
-          notifiedCount++;
-          console.log(`📤 Forwarded request sent to partner ${footman.id}`);
-        }
-      } catch (error) {
-        console.error(`❌ Failed to notify partner ${footman.id}:`, error.message);
-      }
-    }
-
-    console.log(`📢 Forwarded request ${request.id} sent to ${notifiedCount} new partners`);
+    console.log(`✅ Partner ${partner_id} forwarded request ${id}. Status changed to searching. Customer notified.`);
 
     res.json({
       success: true,
@@ -468,9 +415,7 @@ exports.forwardRequest = async (req, res) => {
       data: {
         request_id: request.id,
         customer_id: request.customer_id,
-        blocked_duration_minutes: 10,
-        new_search_started: true,
-        notified_new_partners: notifiedCount
+        blocked_duration_minutes: 10
       }
     });
 
