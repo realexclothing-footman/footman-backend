@@ -31,6 +31,10 @@ exports.getAvailableRequests = async (req, res) => {
       const distance = this._calculateDistance(user.latitude, user.longitude, request.pickup_lat, request.pickup_lng);
       if (distance > 1) continue;
       
+      // Get customer ID from request object
+      const customerId = request.customer_id || (request.customer ? request.customer.id : null);
+      if (!customerId) continue;
+      
       // Check BOTH: same request OR same customer rejection within 10 minutes
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
       const recentRejection = await RequestRejection.findOne({
@@ -39,7 +43,7 @@ exports.getAvailableRequests = async (req, res) => {
           created_at: { [Op.gt]: tenMinutesAgo },
           [Op.or]: [
             { request_id: request.id },
-            { customer_id: request.customer_id }
+            { customer_id: customerId }
           ]
         }
       });
