@@ -80,7 +80,7 @@ class SocketService {
           if (!targetCustomerId || !targetPartnerId || status === 'accepted_by_partner' || status === 'ongoing') {
             const req = await Request.findOne({
               where: { id: requestId },
-              attributes: ['customer_id', 'footman_id', 'request_status'],
+              attributes: ['customer_id', 'assigned_footman_id', 'request_status'],
               include: [
                 {
                   association: 'footman',
@@ -91,10 +91,10 @@ class SocketService {
 
             if (!targetCustomerId && req?.customer_id) targetCustomerId = req.customer_id.toString();
 
-            // partner id from include OR footman_id
+            // partner id from include OR assigned_footman_id
             if (!targetPartnerId) {
               if (req?.footman?.id) targetPartnerId = req.footman.id.toString();
-              else if (req?.footman_id) targetPartnerId = req.footman_id.toString();
+              else if (req?.assigned_footman_id) targetPartnerId = req.assigned_footman_id.toString();
             }
 
             // name/phone (only if available)
@@ -212,13 +212,13 @@ class SocketService {
             } else {
               const req = await Request.findOne({
                 where: { id: requestId },
-                attributes: ['customer_id', 'footman_id'],
+                attributes: ['customer_id', 'assigned_footman_id'],
               });
               if (req?.customer_id) {
                 const cId = req.customer_id.toString();
                 this.requestIndex.set(requestId, {
                   customerId: cId,
-                  partnerId: req?.footman_id ? req.footman_id.toString() : pId,
+                  partnerId: req?.assigned_footman_id ? req.assigned_footman_id.toString() : pId,
                 });
                 this.notifyCustomer(cId, 'partner_location', locationData);
               }
@@ -243,12 +243,12 @@ class SocketService {
           if (!cached?.customerId || !cached?.partnerId) {
             const req = await Request.findOne({
               where: { id: requestId },
-              attributes: ['customer_id', 'footman_id'],
+              attributes: ['customer_id', 'assigned_footman_id'],
             });
 
             cached = {
               customerId: req?.customer_id ? req.customer_id.toString() : cached?.customerId || null,
-              partnerId: req?.footman_id ? req.footman_id.toString() : cached?.partnerId || null,
+              partnerId: req?.assigned_footman_id ? req.assigned_footman_id.toString() : cached?.partnerId || null,
             };
             this.requestIndex.set(requestId, cached);
           }
@@ -286,12 +286,12 @@ class SocketService {
           if (!cached?.customerId || !cached?.partnerId) {
             const req = await Request.findOne({
               where: { id: requestId },
-              attributes: ['customer_id', 'footman_id'],
+              attributes: ['customer_id', 'assigned_footman_id'],
             });
 
             cached = {
               customerId: req?.customer_id ? req.customer_id.toString() : cached?.customerId || null,
-              partnerId: req?.footman_id ? req.footman_id.toString() : cached?.partnerId || null,
+              partnerId: req?.assigned_footman_id ? req.assigned_footman_id.toString() : cached?.partnerId || null,
             };
             this.requestIndex.set(requestId, cached);
           }
@@ -348,7 +348,7 @@ class SocketService {
         const cId = req.customer_id ? req.customer_id.toString() : customerId.toString();
         const pId = req.footman?.id
           ? req.footman.id.toString()
-          : (req.footman_id ? req.footman_id.toString() : null);
+          : (req.assigned_footman_id ? req.assigned_footman_id.toString() : null);
 
         this.requestIndex.set(requestId, { customerId: cId, partnerId: pId });
 
