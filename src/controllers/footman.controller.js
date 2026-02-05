@@ -31,14 +31,25 @@ exports.getAvailableRequests = async (req, res) => {
       const distance = this._calculateDistance(user.latitude, user.longitude, request.pickup_lat, request.pickup_lng);
       if (distance > 1) continue;
       
-      const recentRejection = await RequestRejection.findOne({
+      // Check 1: Same request rejection within 10 minutes
+      const recentRequestRejection = await RequestRejection.findOne({
         where: {
           request_id: request.id,
           footman_id: footman_id,
           created_at: { [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) }
         }
       });
-      if (recentRejection) continue;
+      if (recentRequestRejection) continue;
+      
+      // Check 2: Same customer rejection within 10 minutes (NEW LOGIC)
+      const recentCustomerRejection = await RequestRejection.findOne({
+        where: {
+          customer_id: request.customer_id,
+          footman_id: footman_id,
+          created_at: { [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) }
+        }
+      });
+      if (recentCustomerRejection) continue;
       
       request.distance_km = distance;
       nearbyRequests.push(request);
@@ -108,12 +119,14 @@ exports.rejectRequest = async (req, res) => {
     if (!request) return res.status(404).json({ success: false, message: 'Not found' });
 
     if (request.request_status === 'searching') {
-      await RequestRejection.createRejection(id, footman_id, 'busy');
+      // For searching requests, create rejection with customer_id
+      await RequestRejection.createRejection(id, request.customer_id, footman_id, 'busy');
     } else if (request.request_status === 'accepted_by_partner' && request.assigned_footman_id === footman_id) {
-      await RequestRejection.createRejection(id, footman_id, 'forward');
+      // For accepted requests being forwarded, create rejection with customer_id
+      await RequestRejection.createRejection(id, request.customer_id, footman_id, 'forward');
       await request.update({ request_status: 'searching', assigned_footman_id: null, accepted_at: null });
       
-      // Send notification to customer - FIXED FORMAT
+      // Send notification to customer
       socketService.notifyCustomer(request.customer_id, 'request_update', {
         requestId: request.id,
         status: 'searching',
@@ -125,7 +138,7 @@ exports.rejectRequest = async (req, res) => {
       
       console.log(`✅ Partner ${footman_id} forwarded request ${id}. Status changed to searching.`);
     }
-    res.json({ success: true, message: 'Rejected' });
+    res.json({ success: false, message: 'Rejected' });
   } catch (error) {
     console.error('Reject request error:', error);
     res.status(400).json({ success: false, message: 'Reject failed' });

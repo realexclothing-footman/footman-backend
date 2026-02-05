@@ -17,6 +17,14 @@ const RequestRejection = sequelize.define('RequestRejection', {
       key: 'id'
     }
   },
+  customer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    }
+  },
   footman_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -47,6 +55,10 @@ const RequestRejection = sequelize.define('RequestRejection', {
       name: 'unique_rejection_per_footman'
     },
     {
+      fields: ['footman_id', 'customer_id', 'created_at'],
+      name: 'idx_footman_customer_rejections'
+    },
+    {
       fields: ['footman_id'],
       name: 'idx_footman_rejections'
     },
@@ -63,6 +75,7 @@ const RequestRejection = sequelize.define('RequestRejection', {
 
 // Define associations
 RequestRejection.belongsTo(Request, { foreignKey: 'request_id', as: 'request' });
+RequestRejection.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });
 RequestRejection.belongsTo(User, { foreignKey: 'footman_id', as: 'footman' });
 
 // Instance method to check if rejection is recent (within X minutes)
@@ -91,11 +104,12 @@ RequestRejection.getRecentRejections = async function(requestId, minutes = 10) {
 };
 
 // Static method to create rejection record
-RequestRejection.createRejection = async function(requestId, footmanId, reason = 'forward', notes = null) {
+RequestRejection.createRejection = async function(requestId, customerId, footmanId, reason = 'forward', notes = null) {
   try {
-    // Use upsert to prevent duplicates
+    // Use upsert to prevent duplicates for same request + footman
     const [rejection, created] = await RequestRejection.upsert({
       request_id: requestId,
+      customer_id: customerId,
       footman_id: footmanId,
       reason: reason,
       notes: notes,
@@ -109,6 +123,22 @@ RequestRejection.createRejection = async function(requestId, footmanId, reason =
     console.error('Error creating rejection record:', error);
     throw error;
   }
+};
+
+// Static method to check if footman recently rejected this customer
+RequestRejection.checkRecentCustomerRejection = async function(footmanId, customerId, minutes = 10) {
+  const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+  
+  const rejection = await RequestRejection.findOne({
+    where: {
+      footman_id: footmanId,
+      customer_id: customerId,
+      created_at: { [sequelize.Op.gt]: cutoff }
+    },
+    order: [['created_at', 'DESC']]
+  });
+  
+  return rejection;
 };
 
 // Static method to cleanup old rejections (older than 24 hours)
