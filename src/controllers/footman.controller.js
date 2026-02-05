@@ -135,7 +135,7 @@ exports.rejectRequest = async (req, res) => {
       
       console.log(`✅ Partner ${footman_id} forwarded request ${id}. Status changed to searching.`);
     }
-    res.json({ success: false, message: 'Rejected' });
+    res.json({ success: true, message: 'Rejected' }); // FIXED: success: true
   } catch (error) {
     console.error('Reject request error:', error);
     res.status(400).json({ success: false, message: 'Reject failed' });
