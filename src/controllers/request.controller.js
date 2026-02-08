@@ -657,7 +657,7 @@ exports.emitPartnerLocation = async (req, res) => {
     }
 
     // Emit WebSocket event for partner location
-    socketService.io.emit('partner_location_update', {
+    socketService.io.emit('partner_location', {
       partnerId: partner_id,
       latitude,
       longitude,
