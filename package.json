@@ -4,8 +4,9 @@
   "description": "FootMan Delivery Service Backend",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node sync-db.js && node src/server.js",
     "dev": "nodemon src/server.js",
+    "sync-db": "node sync-db.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
