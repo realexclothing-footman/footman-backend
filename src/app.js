@@ -12,6 +12,7 @@ const requestRoutes = require('./routes/request.routes'); // NEW
 const deliveryRoutes = require('./routes/delivery.routes');
 const adminRoutes = require('./routes/admin.routes');
 const testRoutes = require('./routes/test.routes');
+const partnerRoutes = require('./routes/partner.routes'); // NEW: Partner enterprise routes
 
 const app = express();
 
@@ -68,6 +69,13 @@ app.get('/api/v1', (req, res) => {
         location: 'POST /api/v1/delivery/location',
         stats: 'GET /api/v1/delivery/stats'
       },
+      partner: {
+        dashboard: 'GET /api/v1/partner/dashboard',
+        profile_photo: 'POST /api/v1/partner/profile/photo',
+        panic_button: 'POST /api/v1/partner/panic',
+        online_status: 'POST /api/v1/partner/online-status',
+        statistics: 'GET /api/v1/partner/stats'
+      },
       admin: {
         dashboard: 'GET /api/v1/admin/dashboard',
         users: 'GET /api/v1/admin/users',
@@ -89,6 +97,7 @@ app.use('/api/v1/requests', requestRoutes); // NEW - Simple request system
 app.use('/api/v1/delivery', deliveryRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/test', testRoutes);
+app.use('/api/v1/partner', partnerRoutes); // NEW: Partner enterprise routes
 
 // 404 handler
 app.use((req, res) => {
@@ -107,6 +116,5 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
-
 
 module.exports = app;

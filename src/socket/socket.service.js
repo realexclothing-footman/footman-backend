@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const Request = require('../models/Request');
+const User = require('../models/User');
 
 class SocketService {
   constructor() {
@@ -41,7 +42,13 @@ class SocketService {
           this.activeConnections.set(uid, { socketId: socket.id, userType });
           this.socketIndex.set(socket.id, { userId: uid, userType });
 
+          // Join user-specific room
           socket.join(`${userType}_${uid}`);
+          
+          // Join admin room if admin
+          if (userType === 'admin') {
+            socket.join('admin_room');
+          }
 
           socket.emit('authenticated', { success: true });
           console.log(`✅ ${userType.toUpperCase()} ${uid} connected`);
@@ -54,8 +61,104 @@ class SocketService {
         }
       });
 
+      // ---------------- PARTNER ENTERPRISE EVENTS ----------------
+      // Profile update event (triggered by admin or partner)
+      socket.on('partner_profile_updated', async (data) => {
+        try {
+          const { partner_id, profile_image_url, updated_at } = data || {};
+          if (!partner_id) return;
+          
+          const partnerId = partner_id.toString();
+          
+          // Notify the partner
+          this.notifyPartner(partnerId, 'profile_updated', {
+            partner_id: partnerId,
+            profile_image_url: profile_image_url,
+            updated_at: updated_at || new Date()
+          });
+          
+          console.log(`📸 Profile updated event for partner ${partnerId}`);
+        } catch (error) {
+          console.error('❌ Error in partner_profile_updated:', error);
+        }
+      });
+
+      // Wallet update event (when earnings change)
+      socket.on('partner_wallet_updated', async (data) => {
+        try {
+          const { partner_id, amount, type, new_balance } = data || {};
+          if (!partner_id) return;
+          
+          const partnerId = partner_id.toString();
+          
+          this.notifyPartner(partnerId, 'wallet_updated', {
+            partner_id: partnerId,
+            amount: amount,
+            type: type || 'earning',
+            new_balance: new_balance,
+            timestamp: new Date()
+          });
+          
+          console.log(`💰 Wallet updated for partner ${partnerId}: ${type} ${amount}`);
+        } catch (error) {
+          console.error('❌ Error in partner_wallet_updated:', error);
+        }
+      });
+
+      // Verification update event (triggered by admin)
+      socket.on('partner_verification_updated', async (data) => {
+        try {
+          const { partner_id, verification_type, status } = data || {};
+          if (!partner_id || !verification_type) return;
+          
+          const partnerId = partner_id.toString();
+          
+          this.notifyPartner(partnerId, 'verification_updated', {
+            partner_id: partnerId,
+            verification_type: verification_type,
+            status: status,
+            timestamp: new Date()
+          });
+          
+          // Also notify admins
+          this.io.to('admin_room').emit('verification_status_changed', {
+            partner_id: partnerId,
+            verification_type: verification_type,
+            status: status,
+            updated_by: 'admin',
+            timestamp: new Date()
+          });
+          
+          console.log(`✅ Verification updated for partner ${partnerId}: ${verification_type} = ${status}`);
+        } catch (error) {
+          console.error('❌ Error in partner_verification_updated:', error);
+        }
+      });
+
+      // Partner status changed (by admin - like block/unblock)
+      socket.on('partner_status_changed', async (data) => {
+        try {
+          const { partner_id, status_type, new_status, reason } = data || {};
+          if (!partner_id || !status_type) return;
+          
+          const partnerId = partner_id.toString();
+          
+          this.notifyPartner(partnerId, 'partner_status_changed', {
+            partner_id: partnerId,
+            status_type: status_type,
+            new_status: new_status,
+            reason: reason || '',
+            timestamp: new Date(),
+            updated_by: 'admin'
+          });
+          
+          console.log(`🔄 Partner status changed for ${partnerId}: ${status_type} = ${new_status}`);
+        } catch (error) {
+          console.error('❌ Error in partner_status_changed:', error);
+        }
+      });
+
       // ---------------- REQUEST STATUS ----------------
-      // partner emits: { id, status, customerId?, partnerId? }
       socket.on('request_status_update', async (data) => {
         try {
           const { id, status, customerId, partnerId } = data || {};
@@ -141,7 +244,6 @@ class SocketService {
       });
 
       // ---------------- TRACKING SETUP ----------------
-      // customer or partner emits: { id, customerId, partnerId }
       socket.on('setup_tracking', async (data) => {
         try {
           const { id, customerId, partnerId } = data || {};
@@ -184,7 +286,6 @@ class SocketService {
       });
 
       // ---------------- PARTNER LOCATION ----------------
-      // partner emits: { partnerId, latitude, longitude, bearing, speed, id: requestId }
       socket.on('partner_location_update', async (data) => {
         try {
           const { partnerId, latitude, longitude, bearing, speed, id } = data || {};
@@ -230,7 +331,6 @@ class SocketService {
       });
 
       // ---------------- PAYMENT SELECTION ----------------
-      // customer emits: { id: requestId, status:'selected', method:'cash|bkash|nagad' }
       socket.on('payment_update', async (data) => {
         try {
           const { id, status, method } = data || {};
@@ -273,7 +373,6 @@ class SocketService {
       });
 
       // ---------------- PAYMENT CONFIRMATION ----------------
-      // partner emits: { id: requestId, status:'confirmed', method, amount }
       socket.on('payment_confirmation', async (data) => {
         try {
           const { id, status, method } = data || {};
@@ -368,6 +467,7 @@ class SocketService {
     }
   }
 
+  // Helper method to notify customer
   notifyCustomer(userId, event, data) {
     if (!this.io) return false;
     const uid = userId.toString();
@@ -375,11 +475,24 @@ class SocketService {
     return true;
   }
 
+  // Helper method to notify partner
   notifyPartner(userId, event, data) {
     if (!this.io) return false;
     const uid = userId.toString();
     this.io.to(`partner_${uid}`).emit(event, data);
     return true;
+  }
+
+  // Helper method to emit to all admins
+  emitToAdmins(event, data) {
+    if (!this.io) return false;
+    this.io.to('admin_room').emit(event, data);
+    return true;
+  }
+
+  // Helper method to emit to specific partner
+  emitToPartner(partnerId, event, data) {
+    return this.notifyPartner(partnerId, event, data);
   }
 }
 

@@ -65,6 +65,23 @@ const User = sequelize.define('User', {
     comment: 'Relationship with emergency contact'
   },
   
+  // VERIFICATION FIELDS - NEWLY ADDED
+  nid_verified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'NID verification status for partners'
+  },
+  vehicle_docs_verified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Document verification status for partners'
+  },
+  photo_verified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Profile photo verification status'
+  },
+  
   // Profile image
   profile_image_url: {
     type: DataTypes.STRING,
@@ -87,6 +104,11 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'For Footmen: online/offline status'
+  },
+  last_online_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last time the partner was online'
   },
   latitude: {
     type: DataTypes.DECIMAL(10, 8),
@@ -180,6 +202,9 @@ User.prototype.updateLocation = async function(latitude, longitude) {
 // Instance method to set online status
 User.prototype.setOnlineStatus = async function(isOnline) {
   this.is_online = isOnline;
+  if (isOnline) {
+    this.last_online_at = new Date();
+  }
   return this.save();
 };
 
@@ -188,6 +213,16 @@ User.prototype.updateFcmToken = async function(fcmToken) {
   this.fcm_token = fcmToken;
   this.fcm_token_updated_at = new Date();
   return this.save();
+};
+
+// Instance method to update verification status
+User.prototype.updateVerification = async function(type, status) {
+  const verificationTypes = ['nid_verified', 'vehicle_docs_verified', 'photo_verified'];
+  if (verificationTypes.includes(type)) {
+    this[type] = status;
+    return this.save();
+  }
+  throw new Error(`Invalid verification type: ${type}`);
 };
 
 module.exports = User;
