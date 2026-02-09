@@ -1,6 +1,6 @@
 const { User, Request, sequelize } = require('../models');
 const { Op } = require('sequelize');
-const { uploadProfileImage, getFileUrl } = require('../middleware/upload.middleware');
+const { uploadProfileImage, uploadToCloudinary, getFileUrl, deleteFile } = require('../middleware/upload.middleware');
 const socketService = require('../socket/socket.service');
 
 /**
@@ -171,11 +171,11 @@ exports.getPartnerDashboard = async (req, res) => {
 };
 
 /**
- * 2. PROFILE PHOTO UPLOAD
+ * 2. PROFILE PHOTO UPLOAD WITH CLOUDINARY
  * POST /api/v1/partner/profile/photo
  */
 exports.uploadProfilePhoto = (req, res) => {
-  // Use the existing upload middleware
+  // Use the upload middleware
   uploadProfileImage(req, res, async function(err) {
     try {
       if (err) {
@@ -195,8 +195,33 @@ exports.uploadProfilePhoto = (req, res) => {
 
       const partnerId = req.user.id;
       
-      // Get file URL using existing helper
-      const fileUrl = getFileUrl(req, req.file.filename, 'profile');
+      // Delete old profile photo if exists
+      const partner = await User.findByPk(partnerId, {
+        attributes: ['profile_image_url']
+      });
+      
+      if (partner && partner.profile_image_url) {
+        try {
+          await deleteFile(partner.profile_image_url);
+          console.log(`✅ Deleted old profile photo for partner ${partnerId}`);
+        } catch (deleteError) {
+          console.error('Failed to delete old photo:', deleteError);
+          // Continue with upload even if delete fails
+        }
+      }
+      
+      // Upload to Cloudinary
+      const uploadResult = await uploadToCloudinary(req.file, 'profile', partnerId);
+      
+      if (!uploadResult.success) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to upload image to cloud storage'
+        });
+      }
+      
+      // Get file URL
+      const fileUrl = getFileUrl(uploadResult, 'profile');
       
       // Update user profile image URL
       await User.update(
@@ -227,7 +252,7 @@ exports.uploadProfilePhoto = (req, res) => {
 
       return res.json({
         success: true,
-        message: 'Profile photo uploaded successfully',
+        message: 'Profile photo uploaded successfully to cloud storage',
         data: {
           photo_url: fileUrl,
           user: {
@@ -413,7 +438,7 @@ exports.updateOnlineStatus = async (req, res) => {
 };
 
 /**
- * 5. GET PARTNER STATISTICS (optional)
+ * 5. GET PARTNER STATISTICS
  * GET /api/v1/partner/stats
  */
 exports.getPartnerStatistics = async (req, res) => {

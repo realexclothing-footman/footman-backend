@@ -1,72 +1,50 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const CloudinaryService = require('../services/cloudinary.service');
 
-// Ensure upload directories exist
+// For local development/testing - still create directories
 const createDirectories = () => {
-  const dirs = [
-    './uploads/users/profiles',
-    './uploads/users/nid'
-  ];
-  
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      console.log(`Created directory: ${dir}`);
-    }
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    const dirs = [
+      './uploads/users/profiles',
+      './uploads/users/nid'
+    ];
+    
+    dirs.forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`Created directory: ${dir}`);
+      }
+    });
+  }
 };
 
-// Create directories on startup
 createDirectories();
 
-// Configure storage for user uploads
-const userStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    if (file.fieldname === 'profile_image') {
-      cb(null, './uploads/users/profiles');
-    } else if (file.fieldname === 'nid_front_image' || file.fieldname === 'nid_back_image') {
-      cb(null, './uploads/users/nid');
-    } else {
-      cb(new Error('Invalid file fieldname'), null);
-    }
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename: userId_timestamp_originalname
-    const userId = req.user?.id || 'unknown';
-    const timestamp = Date.now();
-    const originalName = path.parse(file.originalname).name;
-    const extension = path.extname(file.originalname);
-    
-    // Clean filename: replace spaces and special characters
-    const cleanName = originalName.replace(/[^a-zA-Z0-9]/g, '_');
-    
-    const filename = `${userId}_${timestamp}_${cleanName}${extension}`;
-    cb(null, filename);
-  }
-});
+// Configure storage - use memory storage for Cloudinary
+const storage = multer.memoryStorage();
 
-// File filter - more permissive for testing
+// File filter
 const fileFilter = (req, file, cb) => {
-  console.log('=== FILE UPLOAD DEBUG ===');
-  console.log('File fieldname:', file.fieldname);
-  console.log('File originalname:', file.originalname);
-  console.log('File mimetype:', file.mimetype);
-  console.log('File size:', file.size);
+  console.log('=== FILE UPLOAD ===');
+  console.log('Fieldname:', file.fieldname);
+  console.log('Originalname:', file.originalname);
+  console.log('Mimetype:', file.mimetype);
+  console.log('Size:', file.size, 'bytes');
   
-  // Allowed file types - expanded list
+  // Allowed file types
   const allowedMimeTypes = [
     'image/jpeg', 
     'image/jpg', 
     'image/png', 
     'image/gif', 
     'image/webp',
-    'image/heic', // iPhone photos
-    'image/heif', // iPhone photos
-    'application/octet-stream' // Fallback
+    'image/heic',
+    'image/heif',
+    'application/octet-stream'
   ];
   
-  // Also check file extension as fallback
   const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
   
@@ -74,47 +52,109 @@ const fileFilter = (req, file, cb) => {
     console.log('File accepted');
     cb(null, true);
   } else {
-    console.log('File rejected. MimeType:', file.mimetype, 'Extension:', fileExtension);
+    console.log('File rejected. Type:', file.mimetype, 'Extension:', fileExtension);
     cb(new Error('Invalid file type. Only image files are allowed.'), false);
   }
 };
 
-// Configure multer for user uploads
-const uploadUserFiles = multer({
-  storage: userStorage,
+// Configure multer
+const upload = multer({
+  storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // Increased to 10MB limit
-    files: 3 // Max 3 files per request
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 3
   }
 });
 
-// Middleware for registration (files are optional)
-const uploadRegistration = uploadUserFiles.fields([
+// Middleware for registration
+const uploadRegistration = upload.fields([
   { name: 'profile_image', maxCount: 1 },
   { name: 'nid_front_image', maxCount: 1 },
   { name: 'nid_back_image', maxCount: 1 }
 ]);
 
-// Middleware for profile update (single profile image)
-const uploadProfileImage = uploadUserFiles.single('profile_image');
+// Middleware for profile image
+const uploadProfileImage = upload.single('profile_image');
 
-// Helper function to get file URL
-const getFileUrl = (req, filename, type = 'profile') => {
-  if (!filename) return null;
-  
-  const baseUrl = "https://footman-backend.onrender.com";
-  
-  if (type === 'nid') {
-    return `${baseUrl}/api/v1/uploads/nid/${filename}`;
-  } else {
-    return `${baseUrl}/api/v1/uploads/profiles/${filename}`;
+// Middleware for NID images
+const uploadNidImages = upload.fields([
+  { name: 'nid_front_image', maxCount: 1 },
+  { name: 'nid_back_image', maxCount: 1 }
+]);
+
+/**
+ * Upload file to Cloudinary
+ * @param {Object} file - Multer file object
+ * @param {string} type - 'profile' or 'nid'
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Upload result
+ */
+const uploadToCloudinary = async (file, type = 'profile', userId = 'unknown') => {
+  try {
+    if (!file) {
+      throw new Error('No file provided');
+    }
+
+    const folder = type === 'nid' ? 'footman/nid' : 'footman/profiles';
+    const result = await CloudinaryService.uploadMulterFile(file, folder, userId);
+    
+    console.log(`✅ Uploaded to Cloudinary: ${result.url}`);
+    return {
+      success: true,
+      url: result.url,
+      public_id: result.public_id,
+      filename: file.originalname
+    };
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get file URL (now returns Cloudinary URL)
+ * @param {Object} uploadResult - Upload result from uploadToCloudinary
+ * @param {string} type - 'profile' or 'nid'
+ * @returns {string} File URL
+ */
+const getFileUrl = (uploadResult, type = 'profile') => {
+  if (!uploadResult || !uploadResult.url) {
+    return null;
+  }
+  return uploadResult.url;
+};
+
+/**
+ * Delete file from Cloudinary
+ * @param {string} url - Cloudinary URL
+ * @returns {Promise<Object>} Deletion result
+ */
+const deleteFile = async (url) => {
+  if (!url || !CloudinaryService.isCloudinaryUrl(url)) {
+    console.log('Not a Cloudinary URL, skipping deletion:', url);
+    return { success: true, message: 'Not a Cloudinary URL' };
+  }
+
+  try {
+    const publicId = CloudinaryService.extractPublicIdFromUrl(url);
+    if (publicId) {
+      const result = await CloudinaryService.deleteImage(publicId);
+      return result;
+    }
+    return { success: false, message: 'Could not extract public ID from URL' };
+  } catch (error) {
+    console.error('File deletion error:', error);
+    return { success: false, message: error.message };
   }
 };
 
 module.exports = {
   uploadRegistration,
   uploadProfileImage,
+  uploadNidImages,
+  uploadToCloudinary,
   getFileUrl,
+  deleteFile,
   createDirectories
 };
