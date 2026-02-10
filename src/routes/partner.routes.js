@@ -20,4 +20,18 @@ router.post('/online-status', authMiddleware, partnerController.updateOnlineStat
 // 5. PARTNER STATISTICS - Detailed earnings and job stats
 router.get('/stats', authMiddleware, partnerController.getPartnerStatistics);
 
+// ==================== PAYMENT MANAGEMENT ENDPOINTS ====================
+
+// 6. GET PAYMENT METHODS - Get partner's payment setup
+router.get('/payment-methods', authMiddleware, partnerController.getPaymentMethods);
+
+// 7. UPDATE PAYMENT METHODS - Add/update Bkash/Nagad numbers
+router.post('/payment-methods', authMiddleware, partnerController.updatePaymentMethods);
+
+// 8. GET TRANSACTION HISTORY - Earnings and payment history
+router.get('/transactions', authMiddleware, partnerController.getTransactionHistory);
+
+// 9. PAY CASH COMMISSION - Pay cash commission via digital
+router.post('/cash-settlement/pay', authMiddleware, partnerController.payCashCommission);
+
 module.exports = router;

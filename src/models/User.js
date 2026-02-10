@@ -163,6 +163,48 @@ const User = sequelize.define('User', {
     comment: 'When FCM token was last updated'
   },
   
+  // PAYMENT SYSTEM FIELDS - NEWLY ADDED
+  bkash_number: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Bkash number for digital payments'
+  },
+  nagad_number: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Nagad number for digital payments'
+  },
+  cash_enabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'Whether partner accepts cash payments'
+  },
+  cash_commission_due: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+    comment: 'Cash commission owed to company'
+  },
+  cash_settlement_threshold: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 50.00,
+    comment: 'Amount when cash commission alert triggers'
+  },
+  last_cash_settlement_date: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last time cash commission was paid'
+  },
+  is_payment_blocked: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Blocked for not paying cash commission'
+  },
+  payment_blocked_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When payment was blocked'
+  },
+  
   language: {
     type: DataTypes.STRING(10),
     defaultValue: 'en'
@@ -223,6 +265,42 @@ User.prototype.updateVerification = async function(type, status) {
     return this.save();
   }
   throw new Error(`Invalid verification type: ${type}`);
+};
+
+// Instance method to add cash commission
+User.prototype.addCashCommission = async function(amount) {
+  this.cash_commission_due = parseFloat(this.cash_commission_due) + parseFloat(amount);
+  
+  // Check if threshold reached
+  if (this.cash_commission_due >= this.cash_settlement_threshold && !this.is_payment_blocked) {
+    this.is_payment_blocked = true;
+    this.payment_blocked_at = new Date();
+  }
+  
+  return this.save();
+};
+
+// Instance method to pay cash commission
+User.prototype.payCashCommission = async function(amount, paymentMethod) {
+  this.cash_commission_due = Math.max(0, parseFloat(this.cash_commission_due) - parseFloat(amount));
+  this.last_cash_settlement_date = new Date();
+  
+  // Unblock if commission is below threshold
+  if (this.cash_commission_due < this.cash_settlement_threshold && this.is_payment_blocked) {
+    this.is_payment_blocked = false;
+    this.payment_blocked_at = null;
+  }
+  
+  return this.save();
+};
+
+// Instance method to update payment methods
+User.prototype.updatePaymentMethods = async function(bkashNumber, nagadNumber, cashEnabled) {
+  if (bkashNumber !== undefined) this.bkash_number = bkashNumber;
+  if (nagadNumber !== undefined) this.nagad_number = nagadNumber;
+  if (cashEnabled !== undefined) this.cash_enabled = cashEnabled;
+  
+  return this.save();
 };
 
 module.exports = User;
