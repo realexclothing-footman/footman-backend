@@ -1,4 +1,5 @@
-const { User, Request, Transaction, sequelize } = require('../models');
+const { User, Request, Transaction } = require('../models');
+const { sequelize } = require('../config/database');
 const { Op } = require('sequelize');
 const { uploadProfileImage, uploadToCloudinary, getFileUrl, deleteFile } = require('../middleware/upload.middleware');
 const socketService = require('../socket/socket.service');
