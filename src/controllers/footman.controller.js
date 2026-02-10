@@ -1,5 +1,6 @@
 const Request = require('../models/Request');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 const RequestRejection = require('../models/RequestRejection');
 const { Sequelize } = require('sequelize');
 const sequelize = require('../config/database');
@@ -135,7 +136,7 @@ exports.rejectRequest = async (req, res) => {
       
       console.log(`✅ Partner ${footman_id} forwarded request ${id}. Status changed to searching.`);
     }
-    res.json({ success: true, message: 'Rejected' }); // FIXED: success: true
+    res.json({ success: true, message: 'Rejected' });
   } catch (error) {
     console.error('Reject request error:', error);
     res.status(400).json({ success: false, message: 'Reject failed' });
@@ -148,15 +149,81 @@ exports.updateRequestStatus = async (req, res) => {
     const { status } = req.body;
     const footman_id = req.user.id;
 
-    const request = await Request.findOne({ where: { id, assigned_footman_id: footman_id } });
-    if (!request || request.payment_lock) return res.status(400).json({ success: false, message: 'Locked' });
+    const request = await Request.findOne({ 
+      where: { id, assigned_footman_id: footman_id },
+      include: [
+        {
+          association: 'customer',
+          attributes: ['id', 'full_name', 'phone']
+        }
+      ]
+    });
+    
+    if (!request || request.payment_lock) {
+      return res.status(400).json({ success: false, message: 'Request not found or payment locked' });
+    }
 
     const updateData = { request_status: status };
+    
+    // ============ SYSTEM FIX FOR ALL PARTNERS ============
     if (status === 'completed') {
       updateData.completed_at = new Date();
       updateData.payment_flow_state = 'waiting_payment';
       updateData.payment_lock = true;
+      
+      // Get payment method (customer selected or default cash)
+      const paymentMethod = request.customer_selected_payment || 'cash';
+      const totalAmount = parseFloat(request.base_price || 0);
+      const commission = parseFloat(request.commission || 0);
+      const partnerShare = parseFloat(request.footman_earnings || 0);
+      
+      // ============ 1. CREATE TRANSACTION (FOR ALL PARTNERS) ============
+      await Transaction.create({
+        partner_id: footman_id,
+        customer_id: request.customer_id,
+        request_id: request.id,
+        payment_method: paymentMethod,
+        total_amount: totalAmount,
+        commission: commission,
+        partner_share: partnerShare,
+        status: 'completed',
+        notes: `Job #${request.request_number} completed. Payment: ${paymentMethod}`,
+        created_at: new Date()
+      });
+      
+      console.log(`✅ TRANSACTION CREATED: Partner ${footman_id}, Request ${request.id}, ${paymentMethod}, Amount: ${totalAmount}, Partner share: ${partnerShare}`);
+      
+      // ============ 2. UPDATE CASH COMMISSION FOR CASH PAYMENTS (ALL PARTNERS) ============
+      if (paymentMethod === 'cash') {
+        const partner = await User.findByPk(footman_id);
+        if (partner) {
+          const currentCommissionDue = parseFloat(partner.cash_commission_due || 0);
+          const newCommissionDue = currentCommissionDue + commission;
+          
+          await partner.update({
+            cash_commission_due: newCommissionDue,
+            last_commission_alert: new Date()
+          });
+          
+          console.log(`✅ CASH COMMISSION UPDATED: Partner ${footman_id}, ${currentCommissionDue} → ${newCommissionDue}`);
+          
+          // Auto-check commission deadline
+          await partner.checkCommissionDeadline();
+        }
+      }
+      
+      // ============ 3. UPDATE PARTNER STATS (ALL PARTNERS) ============
       await User.increment('total_completed_jobs', { where: { id: footman_id } });
+      
+      // Update total earnings in user table
+      const partner = await User.findByPk(footman_id);
+      if (partner) {
+        const currentEarnings = parseFloat(partner.total_earnings || 0);
+        await partner.update({
+          total_earnings: currentEarnings + partnerShare
+        });
+        console.log(`✅ EARNINGS UPDATED: Partner ${footman_id}, Earnings: ${currentEarnings} → ${currentEarnings + partnerShare}`);
+      }
     }
 
     await request.update(updateData);
@@ -171,6 +238,7 @@ exports.updateRequestStatus = async (req, res) => {
 
     res.json({ success: true, data: { request } });
   } catch (error) {
+    console.error('Update request status error:', error);
     res.status(400).json({ success: false, message: 'Update failed' });
   }
 };
