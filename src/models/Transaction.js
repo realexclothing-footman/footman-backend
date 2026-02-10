@@ -35,9 +35,9 @@ const Transaction = sequelize.define('Transaction', {
     comment: 'Reference to the customer (User)'
   },
   payment_method: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.ENUM('cash', 'bkash', 'nagad'), // CORRECT ORDER: cash, bkash, nagad
     allowNull: false,
-    comment: 'Payment method: cash, bkash, nagad'
+    comment: 'Payment method: cash, bkash, nagad (IN THIS ORDER)'
   },
   total_amount: {
     type: DataTypes.DECIMAL(10, 2),
@@ -97,7 +97,7 @@ const Transaction = sequelize.define('Transaction', {
     comment: 'When cash commission was paid'
   },
   cash_settlement_method: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.ENUM('bkash', 'nagad'), // For cash settlement
     allowNull: true,
     comment: 'How cash commission was paid: bkash, nagad'
   },
@@ -187,7 +187,11 @@ Transaction.getPartnerSummary = async function(partnerId) {
       [sequelize.fn('SUM', sequelize.col('commission')), 'commission'],
       [sequelize.fn('SUM', sequelize.col('partner_share')), 'partner_share']
     ],
-    group: ['payment_method']
+    group: ['payment_method'],
+    order: [
+      // ORDER BY: cash first, then bkash, then nagad
+      sequelize.literal("CASE payment_method WHEN 'cash' THEN 1 WHEN 'bkash' THEN 2 WHEN 'nagad' THEN 3 ELSE 4 END")
+    ]
   });
   
   return result;

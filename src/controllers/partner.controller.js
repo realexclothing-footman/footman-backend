@@ -17,10 +17,10 @@ exports.getPartnerDashboard = async (req, res) => {
         'id', 'full_name', 'email', 'phone', 'profile_image_url',
         'is_online', 'last_online_at', 'latitude', 'longitude', 'last_location_update',
         'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
-        'nid_verified', 'vehicle_docs_verified', 'photo_verified',
+        'nid_verified', 'photo_verified', // REMOVED vehicle_docs_verified
         'rating', 'total_completed_jobs', 'created_at',
         // Payment fields
-        'bkash_number', 'nagad_number', 'cash_enabled',
+        'bkash_number', 'nagad_number',
         'cash_commission_due', 'cash_settlement_threshold',
         'is_payment_blocked', 'payment_blocked_at', 'last_cash_settlement_date'
       ]
@@ -114,19 +114,24 @@ exports.getPartnerDashboard = async (req, res) => {
     // Get transaction summary for payment data
     const transactionSummary = await Transaction.getPartnerSummary(partnerId);
     
-    // Calculate payment breakdown
+    // Calculate payment breakdown - MAINTAIN ORDER: cash, bkash, nagad
     let cashEarnings = 0;
-    let digitalEarnings = 0;
+    let bkashEarnings = 0;
+    let nagadEarnings = 0;
     let totalCommission = 0;
     
     transactionSummary.forEach(item => {
       if (item.payment_method === 'cash') {
         cashEarnings += parseFloat(item.partner_share || 0);
         totalCommission += parseFloat(item.commission || 0);
-      } else if (item.payment_method === 'bkash' || item.payment_method === 'nagad') {
-        digitalEarnings += parseFloat(item.partner_share || 0);
+      } else if (item.payment_method === 'bkash') {
+        bkashEarnings += parseFloat(item.partner_share || 0);
+      } else if (item.payment_method === 'nagad') {
+        nagadEarnings += parseFloat(item.partner_share || 0);
       }
     });
+
+    const digitalEarnings = bkashEarnings + nagadEarnings;
 
     // Prepare response matching your frontend expectations
     const dashboardData = {
@@ -147,7 +152,7 @@ exports.getPartnerDashboard = async (req, res) => {
       },
       wallet: {
         cash_in_hand: parseFloat(weeklyEarnings.toFixed(2)),
-        pending_settlement: 0, // You can implement wallet table later
+        pending_settlement: 0,
         last_deposit: lastRequest ? {
           amount: lastRequest.footman_earnings,
           date: lastRequest.completed_at
@@ -156,12 +161,15 @@ exports.getPartnerDashboard = async (req, res) => {
       },
       payment: {
         methods: {
+          cash: true, // ALWAYS FIRST: Cash is always enabled
           bkash: partner.bkash_number,
-          nagad: partner.nagad_number,
-          cash: partner.cash_enabled
+          nagad: partner.nagad_number
         },
         summary: {
+          // ORDER: cash first, then digital breakdown
           cash_earnings: parseFloat(cashEarnings.toFixed(2)),
+          bkash_earnings: parseFloat(bkashEarnings.toFixed(2)),
+          nagad_earnings: parseFloat(nagadEarnings.toFixed(2)),
           digital_earnings: parseFloat(digitalEarnings.toFixed(2)),
           total_commission: parseFloat(totalCommission.toFixed(2)),
           cash_commission_due: parseFloat(partner.cash_commission_due || 0),
@@ -173,8 +181,8 @@ exports.getPartnerDashboard = async (req, res) => {
       },
       verification: {
         nid_verified: partner.nid_verified || false,
-        vehicle_docs_verified: partner.vehicle_docs_verified || false,
         photo_verified: partner.photo_verified || false
+        // REMOVED vehicle_docs_verified
       },
       performance: {
         today_jobs: todayRequests,
@@ -566,7 +574,7 @@ exports.getPaymentMethods = async (req, res) => {
     
     const partner = await User.findByPk(partnerId, {
       attributes: [
-        'bkash_number', 'nagad_number', 'cash_enabled',
+        'bkash_number', 'nagad_number',
         'cash_commission_due', 'cash_settlement_threshold',
         'is_payment_blocked', 'payment_blocked_at', 'last_cash_settlement_date'
       ]
@@ -583,9 +591,9 @@ exports.getPaymentMethods = async (req, res) => {
       success: true,
       data: {
         methods: {
+          cash: true, // ALWAYS FIRST: Cash is always enabled
           bkash: partner.bkash_number,
-          nagad: partner.nagad_number,
-          cash: partner.cash_enabled
+          nagad: partner.nagad_number
         },
         cash_settlement: {
           commission_due: parseFloat(partner.cash_commission_due || 0),
@@ -613,7 +621,7 @@ exports.getPaymentMethods = async (req, res) => {
 exports.updatePaymentMethods = async (req, res) => {
   try {
     const partnerId = req.user.id;
-    const { bkash_number, nagad_number, cash_enabled } = req.body;
+    const { bkash_number, nagad_number } = req.body;
 
     // Validate inputs
     const updates = {};
@@ -637,16 +645,6 @@ exports.updatePaymentMethods = async (req, res) => {
       }
       updates.nagad_number = nagad_number || null;
     }
-    
-    if (cash_enabled !== undefined) {
-      if (typeof cash_enabled !== 'boolean') {
-        return res.status(400).json({
-          success: false,
-          message: 'cash_enabled must be a boolean (true/false)'
-        });
-      }
-      updates.cash_enabled = cash_enabled;
-    }
 
     // Update partner
     const partner = await User.findByPk(partnerId);
@@ -664,9 +662,9 @@ exports.updatePaymentMethods = async (req, res) => {
       message: 'Payment methods updated successfully',
       data: {
         methods: {
+          cash: true, // Cash is always enabled, always first
           bkash: partner.bkash_number,
-          nagad: partner.nagad_number,
-          cash: partner.cash_enabled
+          nagad: partner.nagad_number
         }
       }
     });
@@ -698,7 +696,11 @@ exports.getTransactionHistory = async (req, res) => {
 
     const { count, rows: transactions } = await Transaction.findAndCountAll({
       where,
-      order: [['created_at', 'DESC']],
+      order: [
+        // ORDER BY: cash first, then bkash, then nagad
+        sequelize.literal("CASE payment_method WHEN 'cash' THEN 1 WHEN 'bkash' THEN 2 WHEN 'nagad' THEN 3 ELSE 4 END"),
+        ['created_at', 'DESC']
+      ],
       limit: parseInt(limit),
       offset: parseInt(offset)
     });

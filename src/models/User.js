@@ -65,16 +65,11 @@ const User = sequelize.define('User', {
     comment: 'Relationship with emergency contact'
   },
   
-  // VERIFICATION FIELDS - NEWLY ADDED
+  // VERIFICATION FIELDS - UPDATED: REMOVED VEHICLE DOCS
   nid_verified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'NID verification status for partners'
-  },
-  vehicle_docs_verified: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    comment: 'Document verification status for partners'
   },
   photo_verified: {
     type: DataTypes.BOOLEAN,
@@ -163,7 +158,7 @@ const User = sequelize.define('User', {
     comment: 'When FCM token was last updated'
   },
   
-  // PAYMENT SYSTEM FIELDS - NEWLY ADDED
+  // PAYMENT SYSTEM FIELDS
   bkash_number: {
     type: DataTypes.STRING(20),
     allowNull: true,
@@ -173,11 +168,6 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(20),
     allowNull: true,
     comment: 'Nagad number for digital payments'
-  },
-  cash_enabled: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true,
-    comment: 'Whether partner accepts cash payments'
   },
   cash_commission_due: {
     type: DataTypes.DECIMAL(10, 2),
@@ -259,7 +249,7 @@ User.prototype.updateFcmToken = async function(fcmToken) {
 
 // Instance method to update verification status
 User.prototype.updateVerification = async function(type, status) {
-  const verificationTypes = ['nid_verified', 'vehicle_docs_verified', 'photo_verified'];
+  const verificationTypes = ['nid_verified', 'photo_verified']; // Removed vehicle_docs_verified
   if (verificationTypes.includes(type)) {
     this[type] = status;
     return this.save();
@@ -295,10 +285,9 @@ User.prototype.payCashCommission = async function(amount, paymentMethod) {
 };
 
 // Instance method to update payment methods
-User.prototype.updatePaymentMethods = async function(bkashNumber, nagadNumber, cashEnabled) {
+User.prototype.updatePaymentMethods = async function(bkashNumber, nagadNumber) {
   if (bkashNumber !== undefined) this.bkash_number = bkashNumber;
   if (nagadNumber !== undefined) this.nagad_number = nagadNumber;
-  if (cashEnabled !== undefined) this.cash_enabled = cashEnabled;
   
   return this.save();
 };
