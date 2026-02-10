@@ -44,7 +44,7 @@ exports.getPartnerDashboard = async (req, res) => {
       attributes: ['id', 'footman_earnings', 'completed_at']
     });
 
-    const weeklyEarnings = completedRequests.reduce((sum, req) => sum + (req.footman_earnings || 0), 0);
+    const weeklyEarnings = completedRequests.reduce((sum, req) => sum + (parseFloat(req.footman_earnings) || 0), 0);
     
     // Get last deposit (last completed request with earnings)
     const lastRequest = await Request.findOne({
@@ -125,13 +125,13 @@ exports.getPartnerDashboard = async (req, res) => {
           : null
       },
       wallet: {
-        cash_in_hand: weeklyEarnings,
+        cash_in_hand: parseFloat(weeklyEarnings.toFixed(2)),
         pending_settlement: 0, // You can implement wallet table later
         last_deposit: lastRequest ? {
           amount: lastRequest.footman_earnings,
           date: lastRequest.completed_at
         } : null,
-        weekly_payout: weeklyEarnings
+        weekly_payout: parseFloat(weeklyEarnings.toFixed(2))
       },
       verification: {
         nid_verified: partner.nid_verified || false,
@@ -140,7 +140,7 @@ exports.getPartnerDashboard = async (req, res) => {
       },
       performance: {
         today_jobs: todayRequests,
-        weekly_earnings: weeklyEarnings,
+        weekly_earnings: parseFloat(weeklyEarnings.toFixed(2)),
         cancel_rate: parseFloat(cancelRate.toFixed(2)),
         avg_job_time: parseFloat(avgJobTime.toFixed(2))
       },
