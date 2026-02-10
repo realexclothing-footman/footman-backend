@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { getFileUrl } = require('../middleware/upload.middleware');
+const { uploadToCloudinary } = require('../middleware/upload.middleware');
 
 // Generate JWT token
 const generateToken = (user) => {
@@ -66,7 +66,7 @@ exports.register = async (req, res) => {
       }
     }
 
-    // Create new user
+    // Create new user (will get ID after saving)
     const userData = {
       phone,
       full_name,
@@ -89,41 +89,91 @@ exports.register = async (req, res) => {
       // Delivery partners need admin approval
       userData.is_active = false;
       
-      // Handle image uploads for delivery partners
+      // Handle image uploads for delivery partners to Cloudinary
       if (req.files) {
-        if (req.files['profile_image'] && req.files['profile_image'][0]) {
-          userData.profile_image_url = getFileUrl(req, req.files['profile_image'][0].filename, 'profile');
-        }
+        // Create a temporary user to get ID for Cloudinary folder
+        const tempUser = await User.create(userData);
+        const userId = tempUser.id;
         
-        if (req.files['nid_front_image'] && req.files['nid_front_image'][0]) {
-          userData.nid_front_image_url = getFileUrl(req, req.files['nid_front_image'][0].filename, 'nid');
+        try {
+          // Upload profile image to Cloudinary
+          if (req.files['profile_image'] && req.files['profile_image'][0]) {
+            const profileFile = req.files['profile_image'][0];
+            const profileUpload = await uploadToCloudinary(profileFile, 'profile', userId);
+            if (profileUpload.success) {
+              tempUser.profile_image_url = profileUpload.url;
+            }
+          }
+          
+          // Upload NID front image to Cloudinary
+          if (req.files['nid_front_image'] && req.files['nid_front_image'][0]) {
+            const nidFrontFile = req.files['nid_front_image'][0];
+            const nidFrontUpload = await uploadToCloudinary(nidFrontFile, 'nid', userId);
+            if (nidFrontUpload.success) {
+              tempUser.nid_front_image_url = nidFrontUpload.url;
+            }
+          }
+          
+          // Upload NID back image to Cloudinary
+          if (req.files['nid_back_image'] && req.files['nid_back_image'][0]) {
+            const nidBackFile = req.files['nid_back_image'][0];
+            const nidBackUpload = await uploadToCloudinary(nidBackFile, 'nid', userId);
+            if (nidBackUpload.success) {
+              tempUser.nid_back_image_url = nidBackUpload.url;
+            }
+          }
+          
+          // Save user with Cloudinary URLs
+          await tempUser.save();
+          
+          // Generate token
+          const token = generateToken(tempUser);
+
+          // Remove password from response
+          const userResponse = tempUser.toJSON();
+          delete userResponse.password_hash;
+
+          return res.status(201).json({
+            success: true,
+            message: 'Registration successful! Wait for admin approval.',
+            data: {
+              user: userResponse,
+              token
+            }
+          });
+          
+        } catch (uploadError) {
+          // If Cloudinary upload fails, delete the temporary user
+          await tempUser.destroy();
+          throw uploadError;
         }
-        
-        if (req.files['nid_back_image'] && req.files['nid_back_image'][0]) {
-          userData.nid_back_image_url = getFileUrl(req, req.files['nid_back_image'][0].filename, 'nid');
-        }
+      } else {
+        // No images provided for delivery partner
+        return res.status(400).json({
+          success: false,
+          message: 'Profile image and NID images are required for delivery partners'
+        });
       }
+    } else {
+      // Regular customer registration (no images)
+      const user = await User.create(userData);
+
+      // Generate token
+      const token = generateToken(user);
+
+      // Remove password from response
+      const userResponse = user.toJSON();
+      delete userResponse.password_hash;
+
+      res.status(201).json({
+        success: true,
+        message: 'Registration successful!',
+        data: {
+          user: userResponse,
+          token
+        }
+      });
     }
-
-    const user = await User.create(userData);
-
-    // Generate token
-    const token = generateToken(user);
-
-    // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.password_hash;
-
-    res.status(201).json({
-      success: true,
-      message: user_type === 'delivery' 
-        ? 'Registration successful! Wait for admin approval.' 
-        : 'Registration successful!',
-      data: {
-        user: userResponse,
-        token
-      }
-    });
 
   } catch (error) {
     console.error('Registration error:', error);
@@ -132,7 +182,16 @@ exports.register = async (req, res) => {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        message: 'File too large. Maximum size is 5MB.'
+        message: 'File too large. Maximum size is 10MB.'
+      });
+    }
+    
+    // Handle Cloudinary errors
+    if (error.message && error.message.includes('Cloudinary')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image upload failed. Please try again.',
+        error: error.message
       });
     }
     
