@@ -844,3 +844,213 @@ exports.payCashCommission = async (req, res) => {
     });
   }
 };
+
+/**
+ * 10. SEND OTP FOR PAYMENT METHOD VERIFICATION
+ * POST /api/v1/partner/verify/send-otp
+ */
+exports.sendPaymentMethodOtp = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const { phone_number, payment_type } = req.body; // payment_type: 'bkash' or 'nagad'
+
+    // Validate inputs
+    if (!phone_number || !payment_type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and payment type are required'
+      });
+    }
+
+    if (!['bkash', 'nagad'].includes(payment_type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment type must be bkash or nagad'
+      });
+    }
+
+    // Validate Bangladeshi phone number
+    if (!/^01[3-9]\d{8}$/.test(phone_number)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid phone number format. Must be 11 digits starting with 01'
+      });
+    }
+
+    // Get partner to check if number already exists
+    const partner = await User.findByPk(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    // Check if number is already registered to another partner
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [
+          { bkash_number: phone_number },
+          { nagad_number: phone_number }
+        ],
+        id: { [Op.ne]: partnerId }
+      }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'This phone number is already registered to another partner'
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Set OTP expiry (5 minutes from now)
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    
+    // Store OTP in database (we can use reset_password_otp fields temporarily)
+    await partner.update({
+      reset_password_otp: otp,
+      reset_password_expires: otpExpiry
+    });
+
+    // TODO: Implement actual SMS sending service
+    // For now, log the OTP (in production, send via SMS gateway)
+    console.log(`📱 OTP for ${payment_type} verification (${phone_number}): ${otp}`);
+    console.log(`⏰ OTP expires at: ${otpExpiry}`);
+
+    // In production, use an SMS service like:
+    // await sendSms(phone_number, `Your FOOTMAN ${payment_type.toUpperCase()} verification OTP is: ${otp}`);
+
+    return res.json({
+      success: true,
+      message: 'OTP sent successfully',
+      data: {
+        phone_number: phone_number,
+        payment_type: payment_type,
+        expires_in: 300, // 5 minutes in seconds
+        // NOTE: In development, we return OTP for testing
+        // Remove this in production
+        otp: process.env.NODE_ENV === 'development' ? otp : undefined
+      }
+    });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send OTP',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * 11. VERIFY OTP FOR PAYMENT METHOD
+ * POST /api/v1/partner/verify/verify-otp
+ */
+exports.verifyPaymentMethodOtp = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const { phone_number, payment_type, otp } = req.body;
+
+    // Validate inputs
+    if (!phone_number || !payment_type || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number, payment type and OTP are required'
+      });
+    }
+
+    if (!['bkash', 'nagad'].includes(payment_type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment type must be bkash or nagad'
+      });
+    }
+
+    if (otp.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP must be 6 digits'
+      });
+    }
+
+    // Get partner
+    const partner = await User.findByPk(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    // Check OTP
+    const storedOtp = partner.reset_password_otp;
+    const otpExpiry = partner.reset_password_expires;
+
+    if (!storedOtp || !otpExpiry) {
+      return res.status(400).json({
+        success: false,
+        message: 'No OTP request found. Please request a new OTP.'
+      });
+    }
+
+    // Check if OTP expired
+    if (new Date() > new Date(otpExpiry)) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired. Please request a new OTP.'
+      });
+    }
+
+    // Verify OTP (case-insensitive for safety)
+    if (storedOtp.toString() !== otp.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP. Please try again.'
+      });
+    }
+
+    // OTP verified successfully - update payment method
+    const updates = {};
+    if (payment_type === 'bkash') {
+      updates.bkash_number = phone_number;
+    } else if (payment_type === 'nagad') {
+      updates.nagad_number = phone_number;
+    }
+
+    // Clear OTP after successful verification
+    updates.reset_password_otp = null;
+    updates.reset_password_expires = null;
+
+    await partner.update(updates);
+
+    // Emit WebSocket event for real-time update
+    if (socketService && socketService.notifyPartner) {
+      socketService.notifyPartner(partnerId, 'payment_method_verified', {
+        payment_type: payment_type,
+        phone_number: phone_number,
+        timestamp: new Date()
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `${payment_type.toUpperCase()} number verified successfully`,
+      data: {
+        payment_type: payment_type,
+        phone_number: phone_number,
+        verified_at: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify OTP',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};

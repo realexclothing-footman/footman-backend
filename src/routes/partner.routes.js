@@ -34,4 +34,12 @@ router.get('/transactions', authMiddleware, partnerController.getTransactionHist
 // 9. PAY CASH COMMISSION - Pay cash commission via digital
 router.post('/cash-settlement/pay', authMiddleware, partnerController.payCashCommission);
 
+// ==================== OTP VERIFICATION ENDPOINTS ====================
+
+// 10. SEND OTP - Send OTP for payment method verification
+router.post('/verify/send-otp', authMiddleware, partnerController.sendPaymentMethodOtp);
+
+// 11. VERIFY OTP - Verify OTP for payment method
+router.post('/verify/verify-otp', authMiddleware, partnerController.verifyPaymentMethodOtp);
+
 module.exports = router;
