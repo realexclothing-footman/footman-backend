@@ -179,6 +179,24 @@ const User = sequelize.define('User', {
     defaultValue: 50.00,
     comment: 'Amount when cash commission alert triggers'
   },
+  
+  // CASH COMMISSION DEADLINE FIELDS (NEW)
+  commission_deadline: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: '24-hour deadline to pay commission when threshold reached'
+  },
+  last_commission_alert: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When last commission alert was sent'
+  },
+  payment_block_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Reason for payment block (e.g., "Unpaid cash commission")'
+  },
+  
   last_cash_settlement_date: {
     type: DataTypes.DATE,
     allowNull: true,
@@ -223,7 +241,9 @@ const User = sequelize.define('User', {
   }
 });
 
-// Instance method to update location
+// ==================== INSTANCE METHODS ====================
+
+// Update location
 User.prototype.updateLocation = async function(latitude, longitude) {
   this.latitude = latitude;
   this.longitude = longitude;
@@ -231,7 +251,7 @@ User.prototype.updateLocation = async function(latitude, longitude) {
   return this.save();
 };
 
-// Instance method to set online status
+// Set online status
 User.prototype.setOnlineStatus = async function(isOnline) {
   this.is_online = isOnline;
   if (isOnline) {
@@ -240,16 +260,16 @@ User.prototype.setOnlineStatus = async function(isOnline) {
   return this.save();
 };
 
-// Instance method to update FCM token
+// Update FCM token
 User.prototype.updateFcmToken = async function(fcmToken) {
   this.fcm_token = fcmToken;
   this.fcm_token_updated_at = new Date();
   return this.save();
 };
 
-// Instance method to update verification status
+// Update verification status
 User.prototype.updateVerification = async function(type, status) {
-  const verificationTypes = ['nid_verified', 'photo_verified']; // Removed vehicle_docs_verified
+  const verificationTypes = ['nid_verified', 'photo_verified'];
   if (verificationTypes.includes(type)) {
     this[type] = status;
     return this.save();
@@ -257,23 +277,48 @@ User.prototype.updateVerification = async function(type, status) {
   throw new Error(`Invalid verification type: ${type}`);
 };
 
-// Instance method to add cash commission
+// ==================== CASH COMMISSION METHODS ====================
+
+// Add cash commission
 User.prototype.addCashCommission = async function(amount) {
-  this.cash_commission_due = parseFloat(this.cash_commission_due) + parseFloat(amount);
+  const oldDue = parseFloat(this.cash_commission_due);
+  const newDue = oldDue + parseFloat(amount);
   
-  // Check if threshold reached
-  if (this.cash_commission_due >= this.cash_settlement_threshold && !this.is_payment_blocked) {
-    this.is_payment_blocked = true;
-    this.payment_blocked_at = new Date();
+  this.cash_commission_due = newDue;
+  
+  // Check if threshold reached for the first time
+  if (newDue >= this.cash_settlement_threshold && oldDue < this.cash_settlement_threshold) {
+    // Set 24-hour deadline
+    this.commission_deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    this.last_commission_alert = new Date();
+    this.payment_block_reason = `Cash commission due: ৳${newDue.toFixed(2)} (Threshold: ৳${this.cash_settlement_threshold})`;
   }
   
   return this.save();
 };
 
-// Instance method to pay cash commission
-User.prototype.payCashCommission = async function(amount, paymentMethod) {
-  this.cash_commission_due = Math.max(0, parseFloat(this.cash_commission_due) - parseFloat(amount));
+// Pay cash commission with payment number
+User.prototype.payCashCommission = async function(amount, paymentMethod, paymentNumber = null) {
+  const paymentAmount = parseFloat(amount);
+  
+  if (paymentAmount <= 0) {
+    throw new Error('Payment amount must be greater than 0');
+  }
+  
+  if (paymentAmount > this.cash_commission_due) {
+    throw new Error(`Payment amount (${paymentAmount}) exceeds commission due (${this.cash_commission_due})`);
+  }
+  
+  // Reduce commission
+  this.cash_commission_due = Math.max(0, this.cash_commission_due - paymentAmount);
   this.last_cash_settlement_date = new Date();
+  
+  // Reset deadline if commission is paid
+  if (this.cash_commission_due < this.cash_settlement_threshold) {
+    this.commission_deadline = null;
+    this.last_commission_alert = null;
+    this.payment_block_reason = null;
+  }
   
   // Unblock if commission is below threshold
   if (this.cash_commission_due < this.cash_settlement_threshold && this.is_payment_blocked) {
@@ -284,7 +329,72 @@ User.prototype.payCashCommission = async function(amount, paymentMethod) {
   return this.save();
 };
 
-// Instance method to update payment methods
+// Check commission deadline and block if expired
+User.prototype.checkCommissionDeadline = async function() {
+  if (!this.commission_deadline || this.is_payment_blocked) {
+    return {
+      is_blocked: this.is_payment_blocked,
+      deadline: this.commission_deadline,
+      reason: this.payment_block_reason
+    };
+  }
+  
+  const now = new Date();
+  const deadline = new Date(this.commission_deadline);
+  
+  // If deadline passed, block account
+  if (now > deadline && !this.is_payment_blocked) {
+    this.is_payment_blocked = true;
+    this.payment_blocked_at = now;
+    this.payment_block_reason = `Commission not paid within 24 hours. Due: ৳${this.cash_commission_due.toFixed(2)}`;
+    await this.save();
+  }
+  
+  return {
+    is_blocked: this.is_payment_blocked,
+    deadline: this.commission_deadline,
+    time_remaining: deadline - now,
+    reason: this.payment_block_reason
+  };
+};
+
+// Get commission status for frontend
+User.prototype.getCommissionStatus = function() {
+  const now = new Date();
+  const deadline = this.commission_deadline ? new Date(this.commission_deadline) : null;
+  
+  let time_remaining = null;
+  let hours_remaining = null;
+  let minutes_remaining = null;
+  let is_urgent = false;
+  
+  if (deadline) {
+    time_remaining = deadline - now;
+    hours_remaining = Math.floor(time_remaining / (1000 * 60 * 60));
+    minutes_remaining = Math.floor((time_remaining % (1000 * 60 * 60)) / (1000 * 60));
+    
+    // Mark as urgent if less than 6 hours remaining
+    is_urgent = hours_remaining < 6;
+  }
+  
+  return {
+    commission_due: parseFloat(this.cash_commission_due),
+    threshold: parseFloat(this.cash_settlement_threshold),
+    is_payment_blocked: this.is_payment_blocked,
+    blocked_at: this.payment_blocked_at,
+    deadline: this.commission_deadline,
+    last_alert: this.last_commission_alert,
+    time_remaining: time_remaining,
+    hours_remaining: hours_remaining,
+    minutes_remaining: minutes_remaining,
+    is_urgent: is_urgent,
+    reason: this.payment_block_reason,
+    can_accept_requests: !this.is_payment_blocked && this.is_active,
+    needs_payment: this.cash_commission_due >= this.cash_settlement_threshold
+  };
+};
+
+// Update payment methods
 User.prototype.updatePaymentMethods = async function(bkashNumber, nagadNumber) {
   if (bkashNumber !== undefined) this.bkash_number = bkashNumber;
   if (nagadNumber !== undefined) this.nagad_number = nagadNumber;

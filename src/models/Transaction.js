@@ -39,6 +39,12 @@ const Transaction = sequelize.define('Transaction', {
     allowNull: false,
     comment: 'Payment method: cash, bkash, nagad (IN THIS ORDER)'
   },
+  // Payment number for digital payments (Bkash/Nagad)
+  payment_number: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Bkash/Nagad number used for payment'
+  },
   total_amount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
@@ -169,10 +175,11 @@ Transaction.prototype.markCashCollected = async function() {
 };
 
 // Instance method to mark cash commission settled
-Transaction.prototype.markCashSettled = async function(method) {
+Transaction.prototype.markCashSettled = async function(method, paymentNumber = null) {
   this.cash_settled = true;
   this.cash_settled_at = new Date();
   this.cash_settlement_method = method;
+  this.payment_number = paymentNumber;
   return this.save();
 };
 

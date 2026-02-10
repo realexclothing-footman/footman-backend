@@ -17,12 +17,14 @@ exports.getPartnerDashboard = async (req, res) => {
         'id', 'full_name', 'email', 'phone', 'profile_image_url',
         'is_online', 'last_online_at', 'latitude', 'longitude', 'last_location_update',
         'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
-        'nid_verified', 'photo_verified', // REMOVED vehicle_docs_verified
+        'nid_verified', 'photo_verified',
         'rating', 'total_completed_jobs', 'created_at',
         // Payment fields
         'bkash_number', 'nagad_number',
         'cash_commission_due', 'cash_settlement_threshold',
-        'is_payment_blocked', 'payment_blocked_at', 'last_cash_settlement_date'
+        'is_payment_blocked', 'payment_blocked_at', 'last_cash_settlement_date',
+        // New commission deadline fields
+        'commission_deadline', 'last_commission_alert', 'payment_block_reason'
       ]
     });
 
@@ -32,6 +34,12 @@ exports.getPartnerDashboard = async (req, res) => {
         message: 'Partner not found'
       });
     }
+
+    // Check commission deadline (auto-block if expired)
+    await partner.checkCommissionDeadline();
+    
+    // Get commission status
+    const commissionStatus = partner.getCommissionStatus();
 
     // Calculate wallet data
     const today = new Date();
@@ -177,12 +185,27 @@ exports.getPartnerDashboard = async (req, res) => {
           is_payment_blocked: partner.is_payment_blocked || false,
           blocked_since: partner.payment_blocked_at,
           last_settlement: partner.last_cash_settlement_date
+        },
+        // New commission status fields
+        commission_status: {
+          commission_due: commissionStatus.commission_due,
+          threshold: commissionStatus.threshold,
+          is_payment_blocked: commissionStatus.is_payment_blocked,
+          blocked_at: commissionStatus.blocked_at,
+          deadline: commissionStatus.deadline,
+          last_alert: commissionStatus.last_alert,
+          time_remaining: commissionStatus.time_remaining,
+          hours_remaining: commissionStatus.hours_remaining,
+          minutes_remaining: commissionStatus.minutes_remaining,
+          is_urgent: commissionStatus.is_urgent,
+          reason: commissionStatus.reason,
+          can_accept_requests: commissionStatus.can_accept_requests,
+          needs_payment: commissionStatus.needs_payment
         }
       },
       verification: {
         nid_verified: partner.nid_verified || false,
         photo_verified: partner.photo_verified || false
-        // REMOVED vehicle_docs_verified
       },
       performance: {
         today_jobs: todayRequests,
@@ -572,20 +595,19 @@ exports.getPaymentMethods = async (req, res) => {
   try {
     const partnerId = req.user.id;
     
-    const partner = await User.findByPk(partnerId, {
-      attributes: [
-        'bkash_number', 'nagad_number',
-        'cash_commission_due', 'cash_settlement_threshold',
-        'is_payment_blocked', 'payment_blocked_at', 'last_cash_settlement_date'
-      ]
-    });
-
+    const partner = await User.findByPk(partnerId);
     if (!partner) {
       return res.status(404).json({
         success: false,
         message: 'Partner not found'
       });
     }
+
+    // Check commission deadline (auto-block if expired)
+    const deadlineStatus = await partner.checkCommissionDeadline();
+    
+    // Get commission status
+    const commissionStatus = partner.getCommissionStatus();
 
     return res.json({
       success: true,
@@ -601,7 +623,8 @@ exports.getPaymentMethods = async (req, res) => {
           is_blocked: partner.is_payment_blocked || false,
           blocked_since: partner.payment_blocked_at,
           last_settlement: partner.last_cash_settlement_date
-        }
+        },
+        commission_status: commissionStatus
       }
     });
   } catch (error) {
@@ -746,13 +769,13 @@ exports.getTransactionHistory = async (req, res) => {
 };
 
 /**
- * 9. PAY CASH COMMISSION
+ * 9. PAY CASH COMMISSION (UPDATED WITH PAYMENT NUMBER)
  * POST /api/v1/partner/cash-settlement/pay
  */
 exports.payCashCommission = async (req, res) => {
   try {
     const partnerId = req.user.id;
-    const { amount, payment_method } = req.body;
+    const { amount, payment_method, payment_number } = req.body;
 
     // Validate inputs
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
@@ -769,6 +792,14 @@ exports.payCashCommission = async (req, res) => {
       });
     }
 
+    // Validate payment number if provided (can be ANY valid Bangladeshi number)
+    if (payment_number && !/^01[3-9]\d{8}$/.test(payment_number)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment number format. Must be 11 digits starting with 01'
+      });
+    }
+
     const partner = await User.findByPk(partnerId);
     if (!partner) {
       return res.status(404).json({
@@ -780,6 +811,14 @@ exports.payCashCommission = async (req, res) => {
     const commissionDue = parseFloat(partner.cash_commission_due || 0);
     const paymentAmount = parseFloat(amount);
 
+    // Check if commission due meets threshold (50 BDT)
+    if (commissionDue < partner.cash_settlement_threshold) {
+      return res.status(400).json({
+        success: false,
+        message: `Commission due (${commissionDue}) is below threshold (${partner.cash_settlement_threshold}). No payment required.`
+      });
+    }
+
     // Check if payment is valid
     if (paymentAmount > commissionDue) {
       return res.status(400).json({
@@ -788,15 +827,28 @@ exports.payCashCommission = async (req, res) => {
       });
     }
 
-    // Update partner commission
-    await partner.payCashCommission(paymentAmount, payment_method);
+    // Check minimum payment (at least threshold amount or full amount if less)
+    const minimumPayment = Math.min(partner.cash_settlement_threshold, commissionDue);
+    if (paymentAmount < minimumPayment) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum payment required: ${minimumPayment} BDT (settlement threshold)`
+      });
+    }
 
-    // Create settlement transaction record
+    // Update partner commission using the new method with payment number
+    await partner.payCashCommission(paymentAmount, payment_method, payment_number);
+
+    // Check commission deadline after payment
+    const deadlineStatus = await partner.checkCommissionDeadline();
+
+    // Create settlement transaction record with payment number
     const settlement = await Transaction.create({
       partner_id: partnerId,
       customer_id: 0, // System payment
       request_id: 0, // No specific request
       payment_method: payment_method,
+      payment_number: payment_number || null, // Store the payment number used
       total_amount: paymentAmount,
       commission: paymentAmount,
       partner_share: 0, // Partner pays, doesn't receive
@@ -804,34 +856,44 @@ exports.payCashCommission = async (req, res) => {
       cash_settled_at: new Date(),
       cash_settlement_method: payment_method,
       status: 'completed',
-      notes: `Cash commission settlement via ${payment_method}`
+      notes: `Cash commission settlement via ${payment_method}${payment_number ? ` to ${payment_number}` : ''}`
     });
+
+    // Get updated commission status
+    const commissionStatus = partner.getCommissionStatus();
 
     // Emit WebSocket event for real-time update
     if (socketService && socketService.notifyPartner) {
       socketService.notifyPartner(partnerId, 'cash_settlement_paid', {
         amount: paymentAmount,
         method: payment_method,
+        payment_number: payment_number,
         new_balance: partner.cash_commission_due,
+        is_unblocked: !partner.is_payment_blocked,
         timestamp: new Date()
       });
     }
 
     return res.json({
       success: true,
-      message: 'Cash commission paid successfully',
+      message: paymentAmount >= commissionDue 
+        ? 'Cash commission fully paid! Account is now unblocked.' 
+        : 'Cash commission partially paid.',
       data: {
         payment: {
           amount: paymentAmount,
           method: payment_method,
+          payment_number: payment_number,
           reference: settlement.id
         },
         commission: {
           previous_due: commissionDue,
           paid: paymentAmount,
           new_due: partner.cash_commission_due,
-          is_blocked: partner.is_payment_blocked
+          is_blocked: partner.is_payment_blocked,
+          can_accept_requests: commissionStatus.can_accept_requests
         },
+        deadline_status: deadlineStatus,
         settlement: settlement
       }
     });
@@ -846,7 +908,69 @@ exports.payCashCommission = async (req, res) => {
 };
 
 /**
- * 10. SEND OTP FOR PAYMENT METHOD VERIFICATION
+ * 10. GET CASH COMMISSION STATUS
+ * GET /api/v1/partner/cash-settlement/status
+ */
+exports.getCashCommissionStatus = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+
+    const partner = await User.findByPk(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    // Check and update deadline status
+    const deadlineStatus = await partner.checkCommissionDeadline();
+    
+    // Get commission status
+    const commissionStatus = partner.getCommissionStatus();
+
+    return res.json({
+      success: true,
+      data: {
+        commission: {
+          due: commissionStatus.commission_due,
+          threshold: commissionStatus.threshold,
+          needs_payment: commissionStatus.needs_payment,
+          last_settlement: partner.last_cash_settlement_date
+        },
+        deadline: {
+          deadline: commissionStatus.deadline,
+          last_alert: commissionStatus.last_alert,
+          time_remaining: commissionStatus.time_remaining,
+          hours_remaining: commissionStatus.hours_remaining,
+          minutes_remaining: commissionStatus.minutes_remaining,
+          is_urgent: commissionStatus.is_urgent
+        },
+        account: {
+          is_blocked: commissionStatus.is_payment_blocked,
+          blocked_at: commissionStatus.blocked_at,
+          blocked_reason: commissionStatus.reason,
+          can_accept_requests: commissionStatus.can_accept_requests
+        },
+        payment_methods: {
+          bkash: partner.bkash_number,
+          nagad: partner.nagad_number,
+          has_digital: !!(partner.bkash_number || partner.nagad_number)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get cash commission status error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch cash commission status',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * 11. SEND OTP FOR PAYMENT METHOD VERIFICATION
  * POST /api/v1/partner/verify/send-otp
  */
 exports.sendPaymentMethodOtp = async (req, res) => {
@@ -947,7 +1071,7 @@ exports.sendPaymentMethodOtp = async (req, res) => {
 };
 
 /**
- * 11. VERIFY OTP FOR PAYMENT METHOD
+ * 12. VERIFY OTP FOR PAYMENT METHOD
  * POST /api/v1/partner/verify/verify-otp
  */
 exports.verifyPaymentMethodOtp = async (req, res) => {
