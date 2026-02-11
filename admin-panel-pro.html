@@ -494,6 +494,7 @@
 
         .status-active { background: #d1fae5; color: #065f46; }
         .status-pending { background: #fef3c7; color: #92400e; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
         .status-inactive { background: #fee2e2; color: #991b1b; }
         .status-online { background: #d1fae5; color: #065f46; }
         .status-offline { background: #f1f5f9; color: #64748b; }
@@ -1260,6 +1261,10 @@
                         ⏳ Pending Approvals
                         <span class="nav-badge badge-danger" id="pendingBadge">0</span>
                     </button>
+                    <button class="nav-item" data-page="rejected">
+                        ❌ Rejected Partners
+                        <span class="nav-badge badge-danger" id="rejectedBadge">0</span>
+                    </button>
                     <button class="nav-item" data-page="documents">
                         📄 Document Verification
                     </button>
@@ -1464,6 +1469,7 @@
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
                                     <option value="pending">Pending</option>
+                                    <option value="rejected">Rejected</option>
                                 </select>
                                 <select class="filter-select" id="userOnlineFilter" onchange="filterUsers()">
                                     <option value="">All Online</option>
@@ -1520,6 +1526,7 @@
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
                                     <option value="pending">Pending</option>
+                                    <option value="rejected">Rejected</option>
                                 </select>
                                 <select class="filter-select" id="partnerOnlineFilter" onchange="filterPartners()">
                                     <option value="">All Online</option>
@@ -1536,6 +1543,7 @@
                                         <th>Contact</th>
                                         <th>NID</th>
                                         <th>Status</th>
+                                        <th>Rejection Reason</th>
                                         <th>Online</th>
                                         <th>Location</th>
                                         <th>Rating</th>
@@ -1544,7 +1552,7 @@
                                 </thead>
                                 <tbody id="partnersTable">
                                     <tr>
-                                        <td colspan="8" class="loading">
+                                        <td colspan="9" class="loading">
                                             <div class="loading-spinner"></div>
                                             <p>Loading partners...</p>
                                         </td>
@@ -1614,6 +1622,7 @@
                                     <tr>
                                         <th>Customer</th>
                                         <th>Contact</th>
+                                        <th>Profile Photo</th>
                                         <th>Total Orders</th>
                                         <th>Total Spent</th>
                                         <th>Last Order</th>
@@ -1623,7 +1632,7 @@
                                 </thead>
                                 <tbody id="customersTable">
                                     <tr>
-                                        <td colspan="7" class="loading">
+                                        <td colspan="8" class="loading">
                                             <div class="loading-spinner"></div>
                                             <p>Loading customers...</p>
                                         </td>
@@ -1856,7 +1865,7 @@
                         <div class="pagination" id="onlinePagination"></div>
                     </div>
 
-                    <!-- Map View -->
+                    <!-- Map View with Custom FOOTMAN Marker -->
                     <div class="data-section mt-3">
                         <div class="section-header">
                             <h3 class="section-title">Partner Locations Map</h3>
@@ -1919,6 +1928,53 @@
                     </div>
                 </section>
 
+                <!-- Rejected Partners Page (NEW) -->
+                <section class="page-content d-none" id="rejectedPage">
+                    <div class="page-header">
+                        <h1 class="page-title">Rejected Partners</h1>
+                        <p class="page-subtitle">Partners who were rejected with reasons</p>
+                    </div>
+
+                    <div class="data-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Rejected Partners</h3>
+                            <div class="card-tools">
+                                <div class="search-box">
+                                    <span class="search-icon">🔍</span>
+                                    <input type="text" id="rejectedSearch" placeholder="Search rejected partners..." onkeyup="searchRejected()">
+                                </div>
+                                <button class="btn btn-outline btn-sm" id="refreshRejected">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Partner</th>
+                                        <th>Contact</th>
+                                        <th>NID</th>
+                                        <th>Rejection Reason</th>
+                                        <th>Rejected By</th>
+                                        <th>Rejected On</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rejectedTable">
+                                    <tr>
+                                        <td colspan="7" class="loading">
+                                            <div class="loading-spinner"></div>
+                                            <p>Loading rejected partners...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination" id="rejectedPagination"></div>
+                    </div>
+                </section>
+
                 <!-- Document Verification Page -->
                 <section class="page-content d-none" id="documentsPage">
                     <div class="page-header">
@@ -1950,13 +2006,14 @@
                                         <th>Contact</th>
                                         <th>NID Number</th>
                                         <th>Status</th>
+                                        <th>Rejection Reason</th>
                                         <th>Applied</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="documentsListView">
                                     <tr>
-                                        <td colspan="6" class="loading">
+                                        <td colspan="7" class="loading">
                                             <div class="loading-spinner"></div>
                                             <p>Loading documents...</p>
                                         </td>
@@ -2022,6 +2079,33 @@
         </div>
     </div>
 
+    <!-- Reject Reason Modal (NEW) -->
+    <div class="modal" id="rejectReasonModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Reject Partner</h2>
+                <button class="close-btn" id="closeRejectModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Rejection Reason <span style="color: var(--danger);">*</span></label>
+                    <textarea id="rejectReasonInput" class="form-control" rows="4" placeholder="Enter detailed reason why this partner is being rejected..." style="resize: vertical;"></textarea>
+                    <small style="color: var(--secondary); margin-top: 8px; display: block;">
+                        This reason will be sent to the partner via push notification and stored in their record.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" id="confirmRejectBtn">
+                    ✗ Reject Partner
+                </button>
+                <button class="btn btn-secondary" id="cancelRejectBtn">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ========== CONFIGURATION ==========
         const Config = {
@@ -2029,7 +2113,8 @@
             TOKEN_KEY: 'footman_admin_token',
             USER_KEY: 'footman_admin_user',
             REFRESH_INTERVAL: 30000,
-            ITEMS_PER_PAGE: 20
+            ITEMS_PER_PAGE: 20,
+            CUSTOM_MARKER_URL: 'https://footman-backend.onrender.com/images/markers/footman-marker.png' // Custom FOOTMAN marker
         };
 
         // ========== STATE MANAGEMENT ==========
@@ -2038,6 +2123,7 @@
             currentPage: 'dashboard',
             currentUser: null,
             isLoading: false,
+            pendingRejectId: null, // Store partner ID for rejection
             charts: {
                 revenue: null,
                 requests: null
@@ -2049,6 +2135,7 @@
                 requests: { page: 1, limit: 20 },
                 online: { page: 1, limit: 20 },
                 pending: { page: 1, limit: 20 },
+                rejected: { page: 1, limit: 20 },
                 documents: { page: 1, limit: 20 }
             },
             map: null,
@@ -2402,7 +2489,7 @@
             State.charts.requests.update();
         }
 
-        // ========== MAP FUNCTIONS ==========
+        // ========== MAP FUNCTIONS WITH CUSTOM MARKER ==========
         function initMap() {
             const mapContainer = document.getElementById('mapContainer');
             if (!mapContainer) return;
@@ -2451,26 +2538,56 @@
             State.mapMarkers.forEach(marker => marker.setMap(null));
             State.mapMarkers = [];
             
-            // Add markers for each partner
+            // Create custom marker icon
+            const customIcon = {
+                url: Config.CUSTOM_MARKER_URL,
+                scaledSize: new google.maps.Size(40, 40),
+                origin: new google.maps.Point(0, 0),
+                anchor: new google.maps.Point(20, 40)
+            };
+            
+            // Add markers for each partner with custom FOOTMAN icon
             partners.forEach(partner => {
                 if (partner.latitude && partner.longitude) {
                     const marker = new google.maps.Marker({
                         position: { lat: parseFloat(partner.latitude), lng: parseFloat(partner.longitude) },
                         map: State.map,
                         title: partner.full_name,
-                        icon: {
-                            url: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png'
-                        }
+                        icon: customIcon,
+                        animation: google.maps.Animation.DROP
                     });
                     
                     const infoWindow = new google.maps.InfoWindow({
                         content: `
-                            <div style="padding: 10px;">
-                                <strong>${partner.full_name}</strong><br>
-                                Phone: ${partner.phone}<br>
-                                Rating: ${partner.rating || 0}/5<br>
-                                Active Jobs: ${partner.active_jobs || 0}<br>
-                                Last Update: ${formatTimeAgo(partner.last_location_update)}
+                            <div style="padding: 10px; min-width: 200px;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                    <img src="${partner.profile_image_url || Config.CUSTOM_MARKER_URL}" 
+                                         style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;"
+                                         onerror="this.src='${Config.CUSTOM_MARKER_URL}'">
+                                    <div>
+                                        <strong style="font-size: 16px;">${partner.full_name}</strong><br>
+                                        <span style="color: #10b981;">🟢 Online</span>
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div><small>📱 ${partner.phone}</small></div>
+                                    <div><small>⭐ ${partner.rating || 0}/5</small></div>
+                                    <div><small>📦 Jobs: ${partner.total_completed_jobs || 0}</small></div>
+                                    <div><small>🔄 Active: ${partner.active_jobs || 0}</small></div>
+                                </div>
+                                <div style="margin-top: 8px;">
+                                    <small>📍 Last update: ${formatTimeAgo(partner.last_location_update)}</small>
+                                </div>
+                                <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                    <button onclick="viewPartnerDetails(${partner.id})" 
+                                            style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                        👁️ View Details
+                                    </button>
+                                    <button onclick="State.map.panTo({lat: ${partner.latitude}, lng: ${partner.longitude}}); State.map.setZoom(15);" 
+                                            style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                        🎯 Center
+                                    </button>
+                                </div>
                             </div>
                         `
                     });
@@ -2534,6 +2651,7 @@
             document.getElementById('refreshActivity').addEventListener('click', () => loadDashboard());
             document.getElementById('refreshOnline').addEventListener('click', () => loadOnlinePartners());
             document.getElementById('refreshPending').addEventListener('click', () => loadPendingApprovals());
+            document.getElementById('refreshRejected').addEventListener('click', () => loadRejectedPartners());
             document.getElementById('exportEarnings').addEventListener('click', () => {
                 showToast('Export feature requires backend implementation', 'info');
             });
@@ -2551,10 +2669,41 @@
                 document.getElementById('requestModal').classList.remove('show');
             });
             
+            // Reject modal buttons
+            document.getElementById('closeRejectModal').addEventListener('click', () => {
+                document.getElementById('rejectReasonModal').classList.remove('show');
+                State.pendingRejectId = null;
+                document.getElementById('rejectReasonInput').value = '';
+            });
+            
+            document.getElementById('cancelRejectBtn').addEventListener('click', () => {
+                document.getElementById('rejectReasonModal').classList.remove('show');
+                State.pendingRejectId = null;
+                document.getElementById('rejectReasonInput').value = '';
+            });
+            
+            document.getElementById('confirmRejectBtn').addEventListener('click', async () => {
+                const reason = document.getElementById('rejectReasonInput').value.trim();
+                if (!reason) {
+                    showToast('Please enter rejection reason', 'warning');
+                    return;
+                }
+                if (State.pendingRejectId) {
+                    await rejectPartnerWithReason(State.pendingRejectId, reason);
+                    document.getElementById('rejectReasonModal').classList.remove('show');
+                    State.pendingRejectId = null;
+                    document.getElementById('rejectReasonInput').value = '';
+                }
+            });
+            
             document.querySelectorAll('.modal').forEach(modal => {
                 modal.addEventListener('click', (e) => {
                     if (e.target === modal) {
                         modal.classList.remove('show');
+                        if (modal.id === 'rejectReasonModal') {
+                            State.pendingRejectId = null;
+                            document.getElementById('rejectReasonInput').value = '';
+                        }
                     }
                 });
             });
@@ -2589,6 +2738,7 @@
                 earnings: 'Earnings & Reports',
                 online: 'Online Partners',
                 pending: 'Pending Approvals',
+                rejected: 'Rejected Partners',
                 documents: 'Document Verification'
             };
             
@@ -2674,7 +2824,6 @@
                 if (revenueData?.success) {
                     updateRevenueChart(revenueData.data.revenue_data);
                 } else {
-                    // NO SAMPLE DATA - Show empty state
                     document.getElementById('revenueChart').parentElement.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-icon">📊</div>
@@ -2685,7 +2834,6 @@
                 }
             } catch (error) {
                 console.error('Revenue time series load error:', error);
-                // NO SAMPLE DATA - Show error state
                 document.getElementById('revenueChart').parentElement.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">⚠️</div>
@@ -2734,7 +2882,11 @@
                             <td>${req.request_number}</td>
                             <td>
                                 <div class="user-cell">
-                                    <div class="avatar">${getInitials(req.customer?.full_name)}</div>
+                                    <div class="avatar">
+                                        ${req.customer?.profile_image_url ? 
+                                            `<img src="${req.customer.profile_image_url}" alt="${req.customer.full_name}">` : 
+                                            getInitials(req.customer?.full_name)}
+                                    </div>
                                     <div class="user-info">
                                         <div class="user-name">${req.customer?.full_name || 'Customer'}</div>
                                         <div class="user-email">${req.customer?.phone || ''}</div>
@@ -2744,7 +2896,11 @@
                             <td>
                                 ${req.footman ? `
                                     <div class="user-cell">
-                                        <div class="avatar">${getInitials(req.footman.full_name)}</div>
+                                        <div class="avatar">
+                                            ${req.footman.profile_image_url ? 
+                                                `<img src="${req.footman.profile_image_url}" alt="${req.footman.full_name}">` : 
+                                                getInitials(req.footman.full_name)}
+                                        </div>
                                         <div class="user-info">
                                             <div class="user-name">${req.footman.full_name}</div>
                                             <div class="user-email">${req.footman.phone}</div>
@@ -2786,14 +2942,14 @@
             document.getElementById('onlinePartners').textContent = stats.online_partners || 0;
             document.getElementById('activePartners').textContent = stats.total_delivery_boys || 0;
             
-            // FIXED: Update badges with correct counts
+            // Update badges with correct counts
             document.getElementById('requestsBadge').textContent = stats.total_requests || 0;
             document.getElementById('usersBadge').textContent = (stats.total_customers || 0) + (stats.total_delivery_boys || 0);
             document.getElementById('partnersBadge').textContent = stats.total_delivery_boys || 0;
             document.getElementById('customersBadge').textContent = stats.total_customers || 0;
             document.getElementById('onlineBadge').textContent = stats.online_partners || 0;
-            // FIX: Show only PENDING partners, not all delivery partners
-            document.getElementById('pendingBadge').textContent = stats.pending_partners || 0;
+            document.getElementById('pendingBadge').textContent = stats.pending_approvals || 0;
+            document.getElementById('rejectedBadge').textContent = stats.rejected_partners || 0;
             
             // Revenue change indicator
             const revenueChange = document.getElementById('revenueChange');
@@ -2876,6 +3032,7 @@
                 const userType = user.user_type || 'customer';
                 const isActive = user.is_active !== false;
                 const isOnline = user.is_online === true;
+                const isRejected = user.rejection_reason !== null;
                 
                 const typeBadges = {
                     admin: '<span class="status-badge status-active">👑 Admin</span>',
@@ -2883,9 +3040,20 @@
                     customer: '<span class="status-badge status-active">👤 Customer</span>'
                 };
                 
-                const statusBadge = isActive ? 
-                    '<span class="status-badge status-active">✅ Active</span>' : 
-                    '<span class="status-badge status-pending">⏳ Inactive</span>';
+                let statusBadge = '';
+                if (userType === 'delivery') {
+                    if (isActive) {
+                        statusBadge = '<span class="status-badge status-active">✅ Active</span>';
+                    } else if (isRejected) {
+                        statusBadge = '<span class="status-badge status-rejected">❌ Rejected</span>';
+                    } else {
+                        statusBadge = '<span class="status-badge status-pending">⏳ Pending</span>';
+                    }
+                } else {
+                    statusBadge = isActive ? 
+                        '<span class="status-badge status-active">✅ Active</span>' : 
+                        '<span class="status-badge status-inactive">⚫ Inactive</span>';
+                }
                 
                 const onlineBadge = isOnline ?
                     '<span class="status-badge status-online">🟢 Online</span>' :
@@ -2897,7 +3065,7 @@
                         <td>
                             <div class="user-cell">
                                 <div class="avatar">
-                                    ${user.profile_image_url ? 
+                                    ${user.profile_image_url && user.profile_image_url !== 'null' ? 
                                         `<img src="${user.profile_image_url}" alt="${user.full_name}">` : 
                                         getInitials(user.full_name)}
                                 </div>
@@ -2909,7 +3077,7 @@
                         </td>
                         <td>
                             <div>${user.phone || 'N/A'}</div>
-                            <small class="text-muted">${user.emergency_contact_phone || 'No emergency contact'}</small>
+                            ${user.emergency_contact_phone ? `<small class="text-muted">Emergency: ${user.emergency_contact_phone}</small>` : ''}
                         </td>
                         <td>${typeBadges[userType] || typeBadges.customer}</td>
                         <td>${statusBadge}</td>
@@ -2920,9 +3088,12 @@
                                 <button class="btn btn-primary btn-sm" onclick="viewUserDetails(${user.id})">
                                     👁️ View
                                 </button>
-                                ${userType === 'delivery' && !isActive ? 
-                                    `<button class="btn btn-success btn-sm" onclick="approveUser(${user.id})">
+                                ${userType === 'delivery' && !isActive && !isRejected ? 
+                                    `<button class="btn btn-success btn-sm" onclick="approvePartner(${user.id})">
                                         ✓ Approve
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="openRejectModal(${user.id})">
+                                        ✗ Reject
                                     </button>` : ''}
                             </div>
                         </td>
@@ -2944,13 +3115,13 @@
                         result.data.pagination.pages,
                         'goToPartnersPage'
                     );
-                    renderDocumentsTable(result.data.users.filter(p => !p.is_active));
+                    renderDocumentsTable(result.data.users.filter(p => !p.is_active && !p.rejection_reason));
                 }
             } catch (error) {
                 console.error('Partners load error:', error);
                 document.getElementById('partnersTable').innerHTML = `
                     <tr>
-                        <td colspan="8" class="empty-state">
+                        <td colspan="9" class="empty-state">
                             <div class="empty-icon">⚠️</div>
                             <div class="empty-title">Failed to load partners</div>
                             <div class="empty-description">${error.message}</div>
@@ -2989,7 +3160,7 @@
             if (!partners || partners.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="empty-state">
+                        <td colspan="9" class="empty-state">
                             <div class="empty-icon">🚚</div>
                             <div class="empty-title">No delivery partners</div>
                             <div class="empty-description">No delivery partners match your filters.</div>
@@ -3003,10 +3174,16 @@
                 const isActive = partner.is_active !== false;
                 const isOnline = partner.is_online === true;
                 const hasLocation = partner.latitude && partner.longitude;
+                const isRejected = partner.rejection_reason !== null;
                 
-                const statusBadge = isActive ? 
-                    '<span class="status-badge status-active">✅ Active</span>' : 
-                    '<span class="status-badge status-pending">⏳ Pending</span>';
+                let statusBadge = '';
+                if (isActive) {
+                    statusBadge = '<span class="status-badge status-active">✅ Active</span>';
+                } else if (isRejected) {
+                    statusBadge = '<span class="status-badge status-rejected">❌ Rejected</span>';
+                } else {
+                    statusBadge = '<span class="status-badge status-pending">⏳ Pending</span>';
+                }
                 
                 const onlineBadge = isOnline ?
                     '<span class="status-badge status-online">🟢 Online</span>' :
@@ -3033,10 +3210,15 @@
                         </td>
                         <td>
                             <div>${partner.phone || 'N/A'}</div>
-                            <small class="text-muted">${partner.emergency_contact_phone || 'No emergency'}</small>
+                            ${partner.emergency_contact_phone ? `<small class="text-muted">Emergency: ${partner.emergency_contact_phone}</small>` : ''}
                         </td>
                         <td>${partner.nid_number || 'N/A'}</td>
                         <td>${statusBadge}</td>
+                        <td>
+                            ${partner.rejection_reason ? 
+                                `<span class="text-danger" title="${partner.rejection_reason}">${partner.rejection_reason.substring(0, 30)}${partner.rejection_reason.length > 30 ? '...' : ''}</span>` : 
+                                '-'}
+                        </td>
                         <td>${onlineBadge}</td>
                         <td>${locationInfo}</td>
                         <td>${partner.rating || 'N/A'}/5</td>
@@ -3048,9 +3230,12 @@
                                 <button class="btn btn-info btn-sm" onclick="viewPartnerDocuments(${partner.id})">
                                     📄 Review All
                                 </button>
-                                ${!isActive ? 
+                                ${!isActive && !isRejected ? 
                                     `<button class="btn btn-success btn-sm" onclick="approvePartner(${partner.id})">
                                         ✓ Approve
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="openRejectModal(${partner.id})">
+                                        ✗ Reject
                                     </button>` : ''}
                             </div>
                         </td>
@@ -3100,7 +3285,11 @@
                     <tr>
                         <td>
                             <div class="user-cell">
-                                <div class="avatar">${getInitials(partner.full_name)}</div>
+                                <div class="avatar">
+                                    ${partner.profile_image_url && partner.profile_image_url !== 'null' ? 
+                                        `<img src="${partner.profile_image_url}" alt="${partner.full_name}">` : 
+                                        getInitials(partner.full_name)}
+                                </div>
                                 <div class="user-info">
                                     <div class="user-name">${partner.full_name || 'N/A'}</div>
                                     <div class="user-email">${partner.phone || 'N/A'}</div>
@@ -3119,7 +3308,7 @@
                                 <button class="btn btn-success btn-sm" onclick="approvePartner(${partner.id})">
                                     ✓ Approve
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="rejectPartner(${partner.id})">
+                                <button class="btn btn-danger btn-sm" onclick="openRejectModal(${partner.id})">
                                     ✗ Reject
                                 </button>
                                 <button class="btn btn-info btn-sm" onclick="viewPartnerDocuments(${partner.id})">
@@ -3132,7 +3321,7 @@
             }).join('');
         }
 
-        // ========== CUSTOMERS ==========
+        // ========== CUSTOMERS WITH PHOTOS ==========
         async function loadCustomers() {
             try {
                 const params = new URLSearchParams(State.filters.customers);
@@ -3150,7 +3339,7 @@
                 console.error('Customers load error:', error);
                 document.getElementById('customersTable').innerHTML = `
                     <tr>
-                        <td colspan="7" class="empty-state">
+                        <td colspan="8" class="empty-state">
                             <div class="empty-icon">⚠️</div>
                             <div class="empty-title">Failed to load customers</div>
                             <div class="empty-description">${error.message}</div>
@@ -3185,7 +3374,7 @@
             if (!customers || customers.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="7" class="empty-state">
+                        <td colspan="8" class="empty-state">
                             <div class="empty-icon">👤</div>
                             <div class="empty-title">No customers</div>
                             <div class="empty-description">No customers match your filters.</div>
@@ -3206,7 +3395,11 @@
                     <tr>
                         <td>
                             <div class="user-cell">
-                                <div class="avatar">${getInitials(customer.full_name)}</div>
+                                <div class="avatar">
+                                    ${customer.profile_image_url && customer.profile_image_url !== 'null' ? 
+                                        `<img src="${customer.profile_image_url}" alt="${customer.full_name}">` : 
+                                        getInitials(customer.full_name)}
+                                </div>
                                 <div class="user-info">
                                     <div class="user-name">${customer.full_name || 'N/A'}</div>
                                     <div class="user-email">${customer.email || 'No email'}</div>
@@ -3214,6 +3407,11 @@
                             </div>
                         </td>
                         <td>${customer.phone || 'N/A'}</td>
+                        <td>
+                            ${customer.profile_image_url && customer.profile_image_url !== 'null' ? 
+                                `<img src="${customer.profile_image_url}" alt="Profile" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">` : 
+                                '<span class="text-muted">No photo</span>'}
+                        </td>
                         <td>0</td>
                         <td>${formatCurrency(0)}</td>
                         <td>Never</td>
@@ -3316,7 +3514,11 @@
                         <td>${req.request_number}</td>
                         <td>
                             <div class="user-cell">
-                                <div class="avatar">${getInitials(req.customer?.full_name)}</div>
+                                <div class="avatar">
+                                    ${req.customer?.profile_image_url ? 
+                                        `<img src="${req.customer.profile_image_url}" alt="${req.customer.full_name}">` : 
+                                        getInitials(req.customer?.full_name)}
+                                </div>
                                 <div class="user-info">
                                     <div class="user-name">${req.customer?.full_name || 'Customer'}</div>
                                     <div class="user-email">${req.customer?.phone || ''}</div>
@@ -3326,7 +3528,11 @@
                         <td>
                             ${req.footman ? `
                                 <div class="user-cell">
-                                    <div class="avatar">${getInitials(req.footman.full_name)}</div>
+                                    <div class="avatar">
+                                        ${req.footman.profile_image_url ? 
+                                            `<img src="${req.footman.profile_image_url}" alt="${req.footman.full_name}">` : 
+                                            getInitials(req.footman.full_name)}
+                                    </div>
                                     <div class="user-info">
                                         <div class="user-name">${req.footman.full_name}</div>
                                         <div class="user-email">${req.footman.phone}</div>
@@ -3442,7 +3648,18 @@
                             <tr>
                                 <td>${formatDate(req.completed_at || req.created_at)}</td>
                                 <td>${req.request_number}</td>
-                                <td>${req.customer?.full_name || 'Customer'}</td>
+                                <td>
+                                    <div class="user-cell">
+                                        <div class="avatar">
+                                            ${req.customer?.profile_image_url ? 
+                                                `<img src="${req.customer.profile_image_url}" alt="${req.customer.full_name}">` : 
+                                                getInitials(req.customer?.full_name)}
+                                        </div>
+                                        <div class="user-info">
+                                            <div class="user-name">${req.customer?.full_name || 'Customer'}</div>
+                                        </div>
+                                    </div>
+                                </td>
                                 <td>${req.footman?.full_name || '-'}</td>
                                 <td><strong>${formatCurrency(req.base_price)}</strong></td>
                                 <td>${formatCurrency(req.commission)}</td>
@@ -3558,11 +3775,9 @@
         async function loadPendingApprovals() {
             try {
                 const params = new URLSearchParams(State.filters.pending);
-                params.set('status', 'pending');
-                params.set('user_type', 'delivery');
-                const result = await apiRequest(`/admin/users?${params}`);
+                const result = await apiRequest(`/admin/partners/pending?${params}`);
                 if (result?.success) {
-                    renderPendingApprovalsTable(result.data.users);
+                    renderPendingApprovalsTable(result.data.partners);
                     renderPagination('pendingPagination', 
                         State.filters.pending.page, 
                         result.data.pagination.pages,
@@ -3635,7 +3850,11 @@
                     <tr>
                         <td>
                             <div class="user-cell">
-                                <div class="avatar">${getInitials(partner.full_name)}</div>
+                                <div class="avatar">
+                                    ${partner.profile_image_url && partner.profile_image_url !== 'null' ? 
+                                        `<img src="${partner.profile_image_url}" alt="${partner.full_name}">` : 
+                                        getInitials(partner.full_name)}
+                                </div>
                                 <div class="user-info">
                                     <div class="user-name">${partner.full_name || 'N/A'}</div>
                                     <div class="user-email">Applied: ${formatDate(partner.created_at)}</div>
@@ -3651,7 +3870,7 @@
                         </td>
                         <td>
                             <div>${partner.phone || 'N/A'}</div>
-                            <small class="text-muted">${partner.emergency_contact_phone || 'No emergency'}</small>
+                            ${partner.emergency_contact_phone ? `<small class="text-muted">Emergency: ${partner.emergency_contact_phone}</small>` : ''}
                         </td>
                         <td>
                             <div>${partner.emergency_contact_name || 'N/A'}</div>
@@ -3662,13 +3881,106 @@
                                 <button class="btn btn-success btn-sm" onclick="approvePartner(${partner.id})">
                                     ✓ Approve
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="rejectPartner(${partner.id})">
+                                <button class="btn btn-danger btn-sm" onclick="openRejectModal(${partner.id})">
                                     ✗ Reject
                                 </button>
                                 <button class="btn btn-info btn-sm" onclick="viewPartnerDocuments(${partner.id})">
                                     📄 Review All
                                 </button>
                             </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ========== REJECTED PARTNERS (NEW) ==========
+        async function loadRejectedPartners() {
+            try {
+                const params = new URLSearchParams(State.filters.rejected);
+                const result = await apiRequest(`/admin/partners/rejected?${params}`);
+                if (result?.success) {
+                    renderRejectedPartnersTable(result.data.partners);
+                    renderPagination('rejectedPagination', 
+                        State.filters.rejected.page, 
+                        result.data.pagination.pages,
+                        'goToRejectedPage'
+                    );
+                }
+            } catch (error) {
+                console.error('Rejected partners load error:', error);
+                document.getElementById('rejectedTable').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon">⚠️</div>
+                            <div class="empty-title">Failed to load rejected partners</div>
+                            <div class="empty-description">${error.message}</div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function searchRejected() {
+            const search = document.getElementById('rejectedSearch').value;
+            State.filters.rejected.search = search;
+            State.filters.rejected.page = 1;
+            loadRejectedPartners();
+        }
+
+        function goToRejectedPage(page) {
+            State.filters.rejected.page = page;
+            loadRejectedPartners();
+        }
+
+        function renderRejectedPartnersTable(partners) {
+            const tbody = document.getElementById('rejectedTable');
+            
+            if (!partners || partners.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-icon">✅</div>
+                            <div class="empty-title">No rejected partners</div>
+                            <div class="empty-description">No partners have been rejected.</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = partners.map(partner => {
+                return `
+                    <tr>
+                        <td>
+                            <div class="user-cell">
+                                <div class="avatar">
+                                    ${partner.profile_image_url && partner.profile_image_url !== 'null' ? 
+                                        `<img src="${partner.profile_image_url}" alt="${partner.full_name}">` : 
+                                        getInitials(partner.full_name)}
+                                </div>
+                                <div class="user-info">
+                                    <div class="user-name">${partner.full_name || 'N/A'}</div>
+                                    <div class="user-email">${partner.email || 'No email'}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${partner.phone || 'N/A'}</td>
+                        <td>${partner.nid_number || 'N/A'}</td>
+                        <td>
+                            <span class="text-danger" style="display: block; max-width: 200px; white-space: normal;" title="${partner.rejection_reason}">
+                                ❌ ${partner.rejection_reason || 'No reason provided'}
+                            </span>
+                        </td>
+                        <td>Admin #${partner.rejected_by || 'N/A'}</td>
+                        <td>${formatDateTime(partner.rejected_at)}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="viewPartnerDetails(${partner.id})">
+                                👁️ View
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="viewPartnerDocuments(${partner.id})">
+                                📄 Documents
+                            </button>
                         </td>
                     </tr>
                 `;
@@ -3692,7 +4004,7 @@
                 console.error('Document verification load error:', error);
                 document.getElementById('documentsListView').innerHTML = `
                     <tr>
-                        <td colspan="6" class="empty-state">
+                        <td colspan="7" class="empty-state">
                             <div class="empty-icon">⚠️</div>
                             <div class="empty-title">Failed to load documents</div>
                             <div class="empty-description">${error.message}</div>
@@ -3727,7 +4039,7 @@
             if (!documents || documents.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="empty-state">
+                        <td colspan="7" class="empty-state">
                             <div class="empty-icon">📄</div>
                             <div class="empty-title">No documents found</div>
                             <div class="empty-description">No documents match your filters.</div>
@@ -3740,15 +4052,24 @@
             tbody.innerHTML = documents.map(doc => {
                 const partner = doc.partner;
                 
-                const statusBadge = partner.status === 'verified' ? 
-                    '<span class="status-badge status-active">✅ Verified</span>' :
-                    '<span class="status-badge status-pending">⏳ Pending</span>';
+                let statusBadge = '';
+                if (partner.status === 'verified') {
+                    statusBadge = '<span class="status-badge status-active">✅ Verified</span>';
+                } else if (partner.status === 'rejected') {
+                    statusBadge = '<span class="status-badge status-rejected">❌ Rejected</span>';
+                } else {
+                    statusBadge = '<span class="status-badge status-pending">⏳ Pending</span>';
+                }
                 
                 return `
                     <tr>
                         <td>
                             <div class="user-cell">
-                                <div class="avatar">${getInitials(partner.name)}</div>
+                                <div class="avatar">
+                                    ${partner.profile_image_url && partner.profile_image_url !== 'null' ? 
+                                        `<img src="${partner.profile_image_url}" alt="${partner.name}">` : 
+                                        getInitials(partner.name)}
+                                </div>
                                 <div class="user-info">
                                     <div class="user-name">${partner.name}</div>
                                     <div class="user-email">${partner.phone}</div>
@@ -3761,15 +4082,19 @@
                         </td>
                         <td>${partner.nid || 'Not provided'}</td>
                         <td>${statusBadge}</td>
+                        <td>
+                            ${partner.rejection_reason ? 
+                                `<span class="text-danger" title="${partner.rejection_reason}">${partner.rejection_reason.substring(0, 30)}${partner.rejection_reason.length > 30 ? '...' : ''}</span>` : 
+                                '-'}
+                        </td>
                         <td>${formatDate(partner.joined)}</td>
                         <td>
                             <div class="d-flex gap-2">
-                                ${partner.status !== 'verified' ? 
+                                ${partner.status === 'pending' ? 
                                     `<button class="btn btn-success btn-sm" onclick="approvePartner(${partner.id})">
                                         ✓ Approve
-                                    </button>` : ''}
-                                ${partner.status !== 'verified' ? 
-                                    `<button class="btn btn-danger btn-sm" onclick="rejectPartner(${partner.id})">
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="openRejectModal(${partner.id})">
                                         ✗ Reject
                                     </button>` : ''}
                                 <button class="btn btn-primary btn-sm" onclick="viewPartnerDocuments(${partner.id})">
@@ -3812,6 +4137,9 @@
                     case 'pending':
                         await loadPendingApprovals();
                         break;
+                    case 'rejected':
+                        await loadRejectedPartners();
+                        break;
                     case 'documents':
                         await loadDocumentVerification();
                         break;
@@ -3844,6 +4172,18 @@
                 const userType = user.user_type || 'customer';
                 const isActive = user.is_active !== false;
                 const isOnline = user.is_online === true;
+                const isRejected = user.rejection_reason !== null;
+                
+                let statusText = '';
+                if (userType === 'delivery') {
+                    if (isActive) statusText = '<span class="status-badge status-active">✅ Active</span>';
+                    else if (isRejected) statusText = '<span class="status-badge status-rejected">❌ Rejected</span>';
+                    else statusText = '<span class="status-badge status-pending">⏳ Pending</span>';
+                } else {
+                    statusText = isActive ? 
+                        '<span class="status-badge status-active">✅ Active</span>' : 
+                        '<span class="status-badge status-inactive">⚫ Inactive</span>';
+                }
                 
                 modalBody.innerHTML = `
                     <div class="details-grid">
@@ -3869,11 +4209,7 @@
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Account Status</span>
-                            <div class="detail-value">
-                                ${isActive ? 
-                                    '<span class="status-badge status-active">✅ Active</span>' : 
-                                    '<span class="status-badge status-pending">⏳ Inactive</span>'}
-                            </div>
+                            <div class="detail-value">${statusText}</div>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Online Status</span>
@@ -3881,6 +4217,14 @@
                                 ${isOnline ? 
                                     '<span class="status-badge status-online">🟢 Online</span>' : 
                                     '<span class="status-badge status-offline">⚫ Offline</span>'}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Profile Photo</span>
+                            <div class="detail-value">
+                                ${user.profile_image_url && user.profile_image_url !== 'null' ? 
+                                    `<img src="${user.profile_image_url}" alt="Profile" style="max-width: 100px; border-radius: 8px;">` : 
+                                    'No photo'}
                             </div>
                         </div>
                         <div class="detail-item">
@@ -3902,6 +4246,15 @@
                                     <div class="detail-value">${user.nid_number || 'N/A'}</div>
                                 </div>
                                 <div class="detail-item">
+                                    <span class="detail-label">NID Documents</span>
+                                    <div class="detail-value">
+                                        ${user.nid_front_image_url && user.nid_front_image_url !== 'null' ? 
+                                            `<a href="${user.nid_front_image_url}" target="_blank">Front</a>` : 'No front'} | 
+                                        ${user.nid_back_image_url && user.nid_back_image_url !== 'null' ? 
+                                            `<a href="${user.nid_back_image_url}" target="_blank">Back</a>` : 'No back'}
+                                    </div>
+                                </div>
+                                <div class="detail-item">
                                     <span class="detail-label">Emergency Contact</span>
                                     <div class="detail-value">
                                         ${user.emergency_contact_name || 'N/A'} 
@@ -3913,6 +4266,15 @@
                                     <span class="detail-label">Address</span>
                                     <div class="detail-value">${user.address || 'N/A'}</div>
                                 </div>
+                                ${user.rejection_reason ? `
+                                <div class="detail-item">
+                                    <span class="detail-label" style="color: var(--danger);">Rejection Reason</span>
+                                    <div class="detail-value" style="color: var(--danger);">
+                                        ❌ ${user.rejection_reason}<br>
+                                        <small>Rejected on: ${formatDateTime(user.rejected_at)}</small>
+                                    </div>
+                                </div>
+                                ` : ''}
                                 ${user.latitude && user.longitude ? `
                                 <div class="detail-item">
                                     <span class="detail-label">GPS Location</span>
@@ -3929,9 +4291,12 @@
                 `;
                 
                 modalFooter.innerHTML = `
-                    ${userType === 'delivery' && !isActive ? 
-                        `<button class="btn btn-success" onclick="approveUser(${user.id}, true)">
+                    ${userType === 'delivery' && !isActive && !isRejected ? 
+                        `<button class="btn btn-success" onclick="approvePartner(${user.id}, true)">
                             ✓ Approve Partner
+                        </button>
+                        <button class="btn btn-danger" onclick="openRejectModal(${user.id})">
+                            ✗ Reject Partner
                         </button>` : ''}
                     ${isActive ? 
                         `<button class="btn btn-warning" onclick="deactivateUser(${user.id}, true)">
@@ -4004,9 +4369,20 @@
                             <div class="detail-value">
                                 ${partner.is_active ? 
                                     '<span class="status-badge status-active">✅ Approved</span>' : 
+                                    partner.rejection_reason ?
+                                    '<span class="status-badge status-rejected">❌ Rejected</span>' :
                                     '<span class="status-badge status-pending">⏳ Pending</span>'}
                             </div>
                         </div>
+                        ${partner.rejection_reason ? `
+                        <div class="detail-item">
+                            <span class="detail-label" style="color: var(--danger);">Rejection Reason</span>
+                            <div class="detail-value" style="color: var(--danger);">
+                                ❌ ${partner.rejection_reason}<br>
+                                <small>Rejected on: ${formatDateTime(partner.rejected_at)}</small>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
                     
                     <div class="mt-3">
@@ -4055,12 +4431,12 @@
                 `;
                 
                 documentsFooter.innerHTML = `
-                    ${!partner.is_active ? `
+                    ${!partner.is_active && !partner.rejection_reason ? `
                         <button class="btn btn-success" onclick="approvePartner(${partner.id}, true)">
                             ✓ Approve Partner
                         </button>
-                        <button class="btn btn-danger" onclick="rejectPartner(${partner.id}, true)">
-                            ✗ Reject
+                        <button class="btn btn-danger" onclick="openRejectModal(${partner.id})">
+                            ✗ Reject Partner
                         </button>
                     ` : ''}
                     <button class="btn btn-secondary" onclick="document.getElementById('documentsModal').classList.remove('show')">
@@ -4109,15 +4485,35 @@
                         <div class="detail-item">
                             <span class="detail-label">Customer</span>
                             <div class="detail-value">
-                                ${request.customer?.full_name || 'Unknown'}<br>
-                                <small>${request.customer?.phone || ''}</small>
+                                <div class="user-cell">
+                                    <div class="avatar">
+                                        ${request.customer?.profile_image_url ? 
+                                            `<img src="${request.customer.profile_image_url}" alt="${request.customer.full_name}">` : 
+                                            getInitials(request.customer?.full_name)}
+                                    </div>
+                                    <div class="user-info">
+                                        <div class="user-name">${request.customer?.full_name || 'Unknown'}</div>
+                                        <div class="user-email">${request.customer?.phone || ''}</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Delivery Partner</span>
                             <div class="detail-value">
-                                ${request.footman?.full_name || 'Not assigned'}<br>
-                                <small>${request.footman?.phone || ''}</small>
+                                ${request.footman ? `
+                                    <div class="user-cell">
+                                        <div class="avatar">
+                                            ${request.footman.profile_image_url ? 
+                                                `<img src="${request.footman.profile_image_url}" alt="${request.footman.full_name}">` : 
+                                                getInitials(request.footman.full_name)}
+                                        </div>
+                                        <div class="user-info">
+                                            <div class="user-name">${request.footman.full_name}</div>
+                                            <div class="user-email">${request.footman.phone}</div>
+                                        </div>
+                                    </div>
+                                ` : 'Not assigned'}
                             </div>
                         </div>
                         <div class="detail-item">
@@ -4182,30 +4578,85 @@
             }
         }
 
-        async function approveUser(userId, fromModal = false) {
-            if (!confirm('Are you sure you want to approve this user?')) return;
-            
+        // ========== NEW: REJECT PARTNER WITH REASON ==========
+        function openRejectModal(userId) {
+            State.pendingRejectId = userId;
+            document.getElementById('rejectReasonInput').value = '';
+            document.getElementById('rejectReasonModal').classList.add('show');
+        }
+
+        async function rejectPartnerWithReason(userId, reason) {
             try {
-                const result = await apiRequest(`/admin/users/${userId}/status`, {
+                setLoading(true);
+                
+                const result = await apiRequest(`/admin/partners/${userId}/reject`, {
                     method: 'PUT',
-                    body: JSON.stringify({ is_active: true })
+                    body: JSON.stringify({ reason: reason })
                 });
                 
                 if (result?.success) {
-                    showToast('User approved successfully!', 'success');
+                    showToast('Partner rejected successfully! Reason sent via push notification.', 'success');
+                    
+                    // Close any open modals
+                    document.getElementById('userModal').classList.remove('show');
+                    document.getElementById('documentsModal').classList.remove('show');
+                    
+                    // Refresh current page
+                    loadPageData(State.currentPage);
+                    
+                    // Refresh badges
+                    const dashboardData = await apiRequest('/admin/dashboard');
+                    if (dashboardData?.success) {
+                        document.getElementById('pendingBadge').textContent = dashboardData.data.stats.pending_approvals || 0;
+                        document.getElementById('rejectedBadge').textContent = dashboardData.data.stats.rejected_partners || 0;
+                    }
+                } else {
+                    throw new Error(result?.message || 'Failed to reject partner');
+                }
+            } catch (error) {
+                console.error('Reject partner error:', error);
+                showToast(`Failed to reject partner: ${error.message}`, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ========== APPROVE PARTNER ==========
+        async function approvePartner(userId, fromModal = false) {
+            if (!confirm('Are you sure you want to approve this partner?')) return;
+            
+            try {
+                setLoading(true);
+                
+                const result = await apiRequest(`/admin/partners/${userId}/approve`, {
+                    method: 'PUT'
+                });
+                
+                if (result?.success) {
+                    showToast('Partner approved successfully! Push notification sent.', 'success');
+                    
                     if (fromModal) {
                         document.getElementById('userModal').classList.remove('show');
                         document.getElementById('documentsModal').classList.remove('show');
                     }
+                    
+                    // Refresh current page
                     loadPageData(State.currentPage);
+                    
+                    // Refresh badges
+                    const dashboardData = await apiRequest('/admin/dashboard');
+                    if (dashboardData?.success) {
+                        document.getElementById('pendingBadge').textContent = dashboardData.data.stats.pending_approvals || 0;
+                    }
+                } else {
+                    throw new Error(result?.message || 'Failed to approve partner');
                 }
             } catch (error) {
-                showToast(`Failed to approve user: ${error.message}`, 'error');
+                console.error('Approve partner error:', error);
+                showToast(`Failed to approve partner: ${error.message}`, 'error');
+            } finally {
+                setLoading(false);
             }
-        }
-
-        async function approvePartner(userId, fromModal = false) {
-            await approveUser(userId, fromModal);
         }
 
         async function deactivateUser(userId, fromModal = false) {
@@ -4226,18 +4677,6 @@
                 }
             } catch (error) {
                 showToast(`Failed to deactivate user: ${error.message}`, 'error');
-            }
-        }
-
-        async function rejectPartner(userId, fromModal = false) {
-            const reason = prompt('Please enter rejection reason:');
-            if (!reason) return;
-            
-            try {
-                showToast('Rejection feature requires backend implementation', 'info');
-                await deactivateUser(userId, fromModal);
-            } catch (error) {
-                showToast(`Failed to reject partner: ${error.message}`, 'error');
             }
         }
 
