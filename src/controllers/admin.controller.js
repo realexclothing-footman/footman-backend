@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Order = require('../models/Order');
 const Request = require('../models/Request');
 const sequelize = require('../models').sequelize;
+const { sendNotificationToUser, NotificationTemplates } = require('../services/firebase.service');
 
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
@@ -29,7 +30,7 @@ exports.getDashboardStats = async (req, res) => {
     const totalCustomers = await User.count({ where: { user_type: 'customer' } });
     const totalDeliveryBoys = await User.count({ where: { user_type: 'delivery' } });
     
-    // Get pending approvals count (NEW - only partners with is_active=false AND no rejection reason)
+    // Get pending approvals count
     const pendingApprovals = await User.count({ 
       where: { 
         user_type: 'delivery',
@@ -38,7 +39,7 @@ exports.getDashboardStats = async (req, res) => {
       } 
     });
     
-    // Get rejected partners count (NEW)
+    // Get rejected partners count
     const rejectedPartners = await User.count({ 
       where: { 
         user_type: 'delivery',
@@ -123,8 +124,8 @@ exports.getDashboardStats = async (req, res) => {
         stats: {
           total_customers: totalCustomers,
           total_delivery_boys: totalDeliveryBoys,
-          pending_approvals: pendingApprovals, // NEW: Only true pending
-          rejected_partners: rejectedPartners, // NEW: Rejected count
+          pending_approvals: pendingApprovals,
+          rejected_partners: rejectedPartners,
           online_partners: onlinePartners,
           total_requests: totalRequests,
           today_requests: todayRequests,
@@ -309,7 +310,7 @@ exports.getAllUsers = async (req, res) => {
       where.user_type = user_type;
     }
     
-    // Status filter (is_active) - UPDATED: differentiate pending vs rejected
+    // Status filter
     if (status === 'active') {
       where.is_active = true;
     } else if (status === 'inactive') {
@@ -345,7 +346,7 @@ exports.getAllUsers = async (req, res) => {
                    'nid_number', 'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
                    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
                    'latitude', 'longitude', 'last_location_update', 'rating', 'total_completed_jobs',
-                   'rejection_reason', 'rejected_at', 'rejected_by', // NEW: include rejection fields
+                   'rejection_reason', 'rejected_at', 'rejected_by',
                    'created_at', 'updated_at'],
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -374,7 +375,7 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// ==================== NEW: APPROVE PARTNER ENDPOINT ====================
+// ==================== APPROVE PARTNER ENDPOINT ====================
 exports.approvePartner = async (req, res) => {
   try {
     const { id } = req.params;
@@ -399,10 +400,16 @@ exports.approvePartner = async (req, res) => {
     // Approve the partner
     await partner.approvePartner(adminId);
 
-    // TODO: Send notification to partner
-    // - Push notification via FCM
-    // - SMS notification
-    // - Email notification
+    // Send approval notification
+    await sendNotificationToUser(partner.id, {
+      title: '✅ Application Approved!',
+      body: 'Congratulations! Your FOOTMAN partner application has been approved. You can now start accepting requests.'
+    }, {
+      type: 'partner_approved',
+      partner_id: partner.id.toString()
+    });
+
+    console.log(`📱 Approval notification sent to partner ${partner.id}`);
 
     res.status(200).json({
       success: true,
@@ -425,7 +432,7 @@ exports.approvePartner = async (req, res) => {
   }
 };
 
-// ==================== NEW: REJECT PARTNER ENDPOINT ====================
+// ==================== REJECT PARTNER WITH NOTIFICATION ====================
 exports.rejectPartner = async (req, res) => {
   try {
     const { id } = req.params;
@@ -459,10 +466,17 @@ exports.rejectPartner = async (req, res) => {
     // Reject the partner with reason
     await partner.rejectPartner(reason, adminId);
 
-    // TODO: Send rejection notification to partner
-    // - Push notification via FCM
-    // - SMS notification with reason
-    // - Email notification with reason
+    // Send rejection notification with the reason
+    await sendNotificationToUser(partner.id, {
+      title: '❌ Application Rejected',
+      body: `Your FOOTMAN partner application was rejected. Reason: ${reason}`
+    }, {
+      type: 'partner_rejected',
+      partner_id: partner.id.toString(),
+      rejection_reason: reason
+    });
+
+    console.log(`📱 Rejection notification sent to partner ${partner.id}: ${reason}`);
 
     res.status(200).json({
       success: true,
@@ -473,7 +487,8 @@ exports.rejectPartner = async (req, res) => {
         phone: partner.phone,
         is_active: partner.is_active,
         rejection_reason: partner.rejection_reason,
-        rejected_at: partner.rejected_at
+        rejected_at: partner.rejected_at,
+        notification_sent: true
       }
     });
   } catch (error) {
@@ -486,7 +501,7 @@ exports.rejectPartner = async (req, res) => {
   }
 };
 
-// ==================== NEW: GET PENDING APPROVALS ====================
+// ==================== GET PENDING APPROVALS ====================
 exports.getPendingApprovals = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
@@ -529,7 +544,7 @@ exports.getPendingApprovals = async (req, res) => {
   }
 };
 
-// ==================== NEW: GET REJECTED PARTNERS ====================
+// ==================== GET REJECTED PARTNERS ====================
 exports.getRejectedPartners = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
@@ -629,7 +644,7 @@ exports.getAllRequests = async (req, res) => {
 
     const where = {};
     
-    // Status filter - ONLY USE EXISTING STATUSES
+    // Status filter
     if (status && ['searching', 'accepted', 'accepted_by_partner', 'ongoing', 'completed', 'cancelled'].includes(status)) {
       where.request_status = status;
     }
@@ -708,7 +723,7 @@ exports.getAllRequests = async (req, res) => {
   }
 };
 
-// Get documents with pagination and filters - UPDATED
+// Get documents with pagination and filters
 exports.getPartnerDocuments = async (req, res) => {
   try {
     const { status, search, page = 1, limit = 20 } = req.query;
@@ -718,7 +733,7 @@ exports.getPartnerDocuments = async (req, res) => {
       user_type: 'delivery'
     };
     
-    // Status filter - UPDATED: differentiate pending vs rejected
+    // Status filter
     if (status === 'verified') {
       where.is_active = true;
     } else if (status === 'pending') {
@@ -742,7 +757,7 @@ exports.getPartnerDocuments = async (req, res) => {
       where,
       attributes: ['id', 'full_name', 'phone', 'nid_number', 'is_active', 
                    'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
-                   'rejection_reason', 'rejected_at', // NEW: include rejection fields
+                   'rejection_reason', 'rejected_at',
                    'created_at', 'emergency_contact_name', 'emergency_contact_phone', 
                    'emergency_contact_relationship', 'address'],
       limit: parseInt(limit),
