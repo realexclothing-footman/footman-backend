@@ -15,6 +15,14 @@ router.get('/users', adminController.getAllUsers);
 router.get('/orders', adminController.getAllOrders);
 router.get('/requests', adminController.getAllRequests);
 router.get('/documents', adminController.getPartnerDocuments);
+
+// ========== NEW: Partner Approval Routes ==========
+router.get('/partners/pending', adminController.getPendingApprovals);
+router.get('/partners/rejected', adminController.getRejectedPartners);
+router.put('/partners/:id/approve', adminController.approvePartner);
+router.put('/partners/:id/reject', adminController.rejectPartner);
+// =================================================
+
 router.put('/users/:id/status', adminController.updateUserStatus);
 router.put('/orders/:id/status', adminController.updateOrderStatus);
 

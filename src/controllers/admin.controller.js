@@ -29,6 +29,24 @@ exports.getDashboardStats = async (req, res) => {
     const totalCustomers = await User.count({ where: { user_type: 'customer' } });
     const totalDeliveryBoys = await User.count({ where: { user_type: 'delivery' } });
     
+    // Get pending approvals count (NEW - only partners with is_active=false AND no rejection reason)
+    const pendingApprovals = await User.count({ 
+      where: { 
+        user_type: 'delivery',
+        is_active: false,
+        rejection_reason: null
+      } 
+    });
+    
+    // Get rejected partners count (NEW)
+    const rejectedPartners = await User.count({ 
+      where: { 
+        user_type: 'delivery',
+        is_active: false,
+        rejection_reason: { [Op.ne]: null }
+      } 
+    });
+    
     // Get online partners count
     const onlinePartners = await User.count({ 
       where: { 
@@ -71,7 +89,7 @@ exports.getDashboardStats = async (req, res) => {
       partnerEarnings += (revenue - commission);
     });
 
-    // Get payment method breakdown (simplified for now)
+    // Get payment method breakdown
     const paymentMethods = await Request.findAll({
       where: { request_status: 'completed' },
       attributes: ['customer_selected_payment'],
@@ -105,6 +123,8 @@ exports.getDashboardStats = async (req, res) => {
         stats: {
           total_customers: totalCustomers,
           total_delivery_boys: totalDeliveryBoys,
+          pending_approvals: pendingApprovals, // NEW: Only true pending
+          rejected_partners: rejectedPartners, // NEW: Rejected count
           online_partners: onlinePartners,
           total_requests: totalRequests,
           today_requests: todayRequests,
@@ -200,7 +220,7 @@ exports.getRevenueTimeSeries = async (req, res) => {
   }
 };
 
-// Get online partners with GPS locations - UPDATED WITH CORRECT FIELD NAMES
+// Get online partners with GPS locations
 exports.getOnlinePartners = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
@@ -289,7 +309,7 @@ exports.getAllUsers = async (req, res) => {
       where.user_type = user_type;
     }
     
-    // Status filter (is_active) - SIMPLIFIED: only active/inactive
+    // Status filter (is_active) - UPDATED: differentiate pending vs rejected
     if (status === 'active') {
       where.is_active = true;
     } else if (status === 'inactive') {
@@ -297,6 +317,11 @@ exports.getAllUsers = async (req, res) => {
     } else if (status === 'pending') {
       where.user_type = 'delivery';
       where.is_active = false;
+      where.rejection_reason = null;
+    } else if (status === 'rejected') {
+      where.user_type = 'delivery';
+      where.is_active = false;
+      where.rejection_reason = { [Op.ne]: null };
     }
     
     // Online status filter
@@ -306,7 +331,7 @@ exports.getAllUsers = async (req, res) => {
       where.is_online = false;
     }
     
-    // Search filter - SIMPLIFIED: only name and phone
+    // Search filter
     if (search) {
       where[Op.or] = [
         { full_name: { [Op.iLike]: `%${search}%` } },
@@ -320,6 +345,7 @@ exports.getAllUsers = async (req, res) => {
                    'nid_number', 'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
                    'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
                    'latitude', 'longitude', 'last_location_update', 'rating', 'total_completed_jobs',
+                   'rejection_reason', 'rejected_at', 'rejected_by', // NEW: include rejection fields
                    'created_at', 'updated_at'],
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -343,6 +369,203 @@ exports.getAllUsers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch users',
+      error: error.message
+    });
+  }
+};
+
+// ==================== NEW: APPROVE PARTNER ENDPOINT ====================
+exports.approvePartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.id;
+
+    const partner = await User.findByPk(id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    if (partner.user_type !== 'delivery') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not a delivery partner'
+      });
+    }
+
+    // Approve the partner
+    await partner.approvePartner(adminId);
+
+    // TODO: Send notification to partner
+    // - Push notification via FCM
+    // - SMS notification
+    // - Email notification
+
+    res.status(200).json({
+      success: true,
+      message: 'Partner approved successfully',
+      data: {
+        id: partner.id,
+        full_name: partner.full_name,
+        phone: partner.phone,
+        is_active: partner.is_active,
+        approved_at: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Approve partner error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve partner',
+      error: error.message
+    });
+  }
+};
+
+// ==================== NEW: REJECT PARTNER ENDPOINT ====================
+exports.rejectPartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const adminId = req.user.id;
+
+    // Validate reason
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Rejection reason is required'
+      });
+    }
+
+    const partner = await User.findByPk(id);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: 'Partner not found'
+      });
+    }
+
+    if (partner.user_type !== 'delivery') {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not a delivery partner'
+      });
+    }
+
+    // Reject the partner with reason
+    await partner.rejectPartner(reason, adminId);
+
+    // TODO: Send rejection notification to partner
+    // - Push notification via FCM
+    // - SMS notification with reason
+    // - Email notification with reason
+
+    res.status(200).json({
+      success: true,
+      message: 'Partner rejected successfully',
+      data: {
+        id: partner.id,
+        full_name: partner.full_name,
+        phone: partner.phone,
+        is_active: partner.is_active,
+        rejection_reason: partner.rejection_reason,
+        rejected_at: partner.rejected_at
+      }
+    });
+  } catch (error) {
+    console.error('Reject partner error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject partner',
+      error: error.message
+    });
+  }
+};
+
+// ==================== NEW: GET PENDING APPROVALS ====================
+exports.getPendingApprovals = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: partners } = await User.findAndCountAll({
+      where: {
+        user_type: 'delivery',
+        is_active: false,
+        rejection_reason: null
+      },
+      attributes: ['id', 'full_name', 'phone', 'email', 'nid_number', 'address',
+                   'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
+                   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+                   'created_at'],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['created_at', 'ASC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        partners,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get pending approvals error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending approvals',
+      error: error.message
+    });
+  }
+};
+
+// ==================== NEW: GET REJECTED PARTNERS ====================
+exports.getRejectedPartners = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: partners } = await User.findAndCountAll({
+      where: {
+        user_type: 'delivery',
+        is_active: false,
+        rejection_reason: { [Op.ne]: null }
+      },
+      attributes: ['id', 'full_name', 'phone', 'email', 'nid_number',
+                   'rejection_reason', 'rejected_at', 'rejected_by',
+                   'created_at'],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['rejected_at', 'DESC']]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        partners,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get rejected partners error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch rejected partners',
       error: error.message
     });
   }
@@ -406,7 +629,7 @@ exports.getAllRequests = async (req, res) => {
 
     const where = {};
     
-    // Status filter - ONLY USE EXISTING STATUSES: 'searching', 'accepted', 'accepted_by_partner', 'ongoing', 'completed', 'cancelled'
+    // Status filter - ONLY USE EXISTING STATUSES
     if (status && ['searching', 'accepted', 'accepted_by_partner', 'ongoing', 'completed', 'cancelled'].includes(status)) {
       where.request_status = status;
     }
@@ -448,7 +671,7 @@ exports.getAllRequests = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
-    // Calculate totals from ALL completed requests, not just current page
+    // Calculate totals from ALL completed requests
     const completedRequestsAll = await Request.findAll({
       where: { request_status: 'completed' },
       attributes: ['base_price', 'commission']
@@ -485,7 +708,7 @@ exports.getAllRequests = async (req, res) => {
   }
 };
 
-// Get documents with pagination and filters - UPDATED WITH EMERGENCY CONTACT
+// Get documents with pagination and filters - UPDATED
 exports.getPartnerDocuments = async (req, res) => {
   try {
     const { status, search, page = 1, limit = 20 } = req.query;
@@ -495,11 +718,15 @@ exports.getPartnerDocuments = async (req, res) => {
       user_type: 'delivery'
     };
     
-    // Status filter - SIMPLIFIED
+    // Status filter - UPDATED: differentiate pending vs rejected
     if (status === 'verified') {
       where.is_active = true;
     } else if (status === 'pending') {
       where.is_active = false;
+      where.rejection_reason = null;
+    } else if (status === 'rejected') {
+      where.is_active = false;
+      where.rejection_reason = { [Op.ne]: null };
     }
     
     // Search filter
@@ -515,6 +742,7 @@ exports.getPartnerDocuments = async (req, res) => {
       where,
       attributes: ['id', 'full_name', 'phone', 'nid_number', 'is_active', 
                    'profile_image_url', 'nid_front_image_url', 'nid_back_image_url',
+                   'rejection_reason', 'rejected_at', // NEW: include rejection fields
                    'created_at', 'emergency_contact_name', 'emergency_contact_phone', 
                    'emergency_contact_relationship', 'address'],
       limit: parseInt(limit),
@@ -560,7 +788,9 @@ exports.getPartnerDocuments = async (req, res) => {
           phone: partner.phone,
           nid: partner.nid_number,
           address: partner.address,
-          status: partner.is_active ? 'verified' : 'pending',
+          status: partner.is_active ? 'verified' : (partner.rejection_reason ? 'rejected' : 'pending'),
+          rejection_reason: partner.rejection_reason,
+          rejected_at: partner.rejected_at,
           joined: partner.created_at,
           emergency_contact_name: partner.emergency_contact_name,
           emergency_contact_phone: partner.emergency_contact_phone,

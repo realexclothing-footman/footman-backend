@@ -65,7 +65,7 @@ const User = sequelize.define('User', {
     comment: 'Relationship with emergency contact'
   },
   
-  // VERIFICATION FIELDS - UPDATED: REMOVED VEHICLE DOCS
+  // VERIFICATION FIELDS
   nid_verified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
@@ -92,6 +92,23 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true,
     comment: 'URL to NID back image'
+  },
+  
+  // REJECTION FIELDS (NEW)
+  rejection_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Reason why partner was rejected by admin'
+  },
+  rejected_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When partner was rejected'
+  },
+  rejected_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Admin ID who rejected this partner'
   },
   
   // FOOTMAN SPECIFIC FIELDS
@@ -180,7 +197,7 @@ const User = sequelize.define('User', {
     comment: 'Amount when cash commission alert triggers'
   },
   
-  // CASH COMMISSION DEADLINE FIELDS (NEW)
+  // CASH COMMISSION DEADLINE FIELDS
   commission_deadline: {
     type: DataTypes.DATE,
     allowNull: true,
@@ -275,6 +292,50 @@ User.prototype.updateVerification = async function(type, status) {
     return this.save();
   }
   throw new Error(`Invalid verification type: ${type}`);
+};
+
+// ==================== APPROVAL/REJECTION METHODS (NEW) ====================
+
+// Approve partner
+User.prototype.approvePartner = async function(adminId) {
+  if (this.user_type !== 'delivery') {
+    throw new Error('Only delivery partners can be approved');
+  }
+  
+  this.is_active = true;
+  this.rejection_reason = null;
+  this.rejected_at = null;
+  this.rejected_by = null;
+  
+  return this.save();
+};
+
+// Reject partner with reason
+User.prototype.rejectPartner = async function(reason, adminId) {
+  if (this.user_type !== 'delivery') {
+    throw new Error('Only delivery partners can be rejected');
+  }
+  
+  this.is_active = false;
+  this.rejection_reason = reason;
+  this.rejected_at = new Date();
+  this.rejected_by = adminId;
+  
+  return this.save();
+};
+
+// Check if partner is rejected
+User.prototype.isRejected = function() {
+  return this.user_type === 'delivery' && 
+         this.is_active === false && 
+         this.rejection_reason !== null;
+};
+
+// Check if partner is pending
+User.prototype.isPending = function() {
+  return this.user_type === 'delivery' && 
+         this.is_active === false && 
+         this.rejection_reason === null;
 };
 
 // ==================== CASH COMMISSION METHODS ====================
