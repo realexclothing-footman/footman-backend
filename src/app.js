@@ -8,29 +8,31 @@ const { testConnection } = require('./config/database');
 
 // Routes
 const authRoutes = require('./routes/auth.routes');
-const requestRoutes = require('./routes/request.routes'); // NEW
+const requestRoutes = require('./routes/request.routes');
 const deliveryRoutes = require('./routes/delivery.routes');
 const adminRoutes = require('./routes/admin.routes');
 const testRoutes = require('./routes/test.routes');
-const partnerRoutes = require('./routes/partner.routes'); // NEW: Partner enterprise routes
+const partnerRoutes = require('./routes/partner.routes');
 
 const app = express();
 
-// Middleware
+// ========== MIDDLEWARE ==========
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
-app.use('/api/v1/uploads/profiles', express.static(path.join(__dirname, 'uploads/users/profiles')));
-app.use('/api/v1/uploads/nid', express.static(path.join(__dirname, 'uploads/users/nid')));
-// Serve APK downloads - FIXED: point to public/downloads
-app.use('/downloads', express.static(path.join(__dirname, 'public/downloads')));
-// Serve HTML files from current directory
-// Serve public folder for custom images
+// ========== STATIC FILES - MOVED BEFORE ROUTES (FIXED!) ==========
+// Serve uploaded files
+app.use("/api/v1/uploads/profiles", express.static(path.join(__dirname, "uploads/users/profiles")));
+app.use("/api/v1/uploads/nid", express.static(path.join(__dirname, "uploads/users/nid")));
+// Serve APK downloads
+app.use("/downloads", express.static(path.join(__dirname, "public/downloads")));
+// Serve custom marker images - YOUR FOOTMAN MARKER!
 app.use("/images", express.static(path.join(__dirname, "public/images")));
+// Serve HTML files from current directory (admin panel)
 app.use(express.static("."));
-// Health check
+
+// ========== HEALTH CHECK ==========
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy',
@@ -40,7 +42,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Documentation
+// ========== API DOCUMENTATION ==========
 app.get('/api/v1', (req, res) => {
   res.json({
     message: 'Welcome to FOOTMAN API',
@@ -81,7 +83,11 @@ app.get('/api/v1', (req, res) => {
       admin: {
         dashboard: 'GET /api/v1/admin/dashboard',
         users: 'GET /api/v1/admin/users',
-        requests: 'GET /api/v1/admin/requests'
+        requests: 'GET /api/v1/admin/requests',
+        pending_approvals: 'GET /api/v1/admin/partners/pending',
+        rejected_partners: 'GET /api/v1/admin/partners/rejected',
+        approve_partner: 'PUT /api/v1/admin/partners/:id/approve',
+        reject_partner: 'PUT /api/v1/admin/partners/:id/reject'
       },
       health: 'GET /health'
     },
@@ -93,15 +99,15 @@ app.get('/api/v1', (req, res) => {
   });
 });
 
-// API Routes
+// ========== API ROUTES ==========
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/requests', requestRoutes); // NEW - Simple request system
+app.use('/api/v1/requests', requestRoutes);
 app.use('/api/v1/delivery', deliveryRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/test', testRoutes);
-app.use('/api/v1/partner', partnerRoutes); // NEW: Partner enterprise routes
+app.use('/api/v1/partner', partnerRoutes);
 
-// 404 handler
+// ========== 404 HANDLER ==========
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -109,7 +115,7 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
+// ========== ERROR HANDLER ==========
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({
