@@ -27,6 +27,8 @@ app.use('/api/v1/uploads/nid', express.static(path.join(__dirname, 'uploads/user
 // Serve APK downloads - FIXED: point to public/downloads
 app.use('/downloads', express.static(path.join(__dirname, 'public/downloads')));
 // Serve HTML files from current directory
+// Serve public folder for custom images
+app.use("/images", express.static(path.join(__dirname, "public/images")));
 app.use(express.static("."));
 // Health check
 app.get('/health', (req, res) => {
