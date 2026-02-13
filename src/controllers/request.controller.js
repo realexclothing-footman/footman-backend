@@ -370,7 +370,7 @@ exports.forwardRequest = async (req, res) => {
     const existingForward = await RequestRejection.findOne({
       where: {
         request_id: id,
-        footman_id: partner_id,
+        assigned_footman_id: partner_id,
         reason: 'forward'
       }
     });
@@ -385,7 +385,7 @@ exports.forwardRequest = async (req, res) => {
     // Create rejection record with 'forward' reason
     await RequestRejection.create({
       request_id: id,
-      footman_id: partner_id,
+      assigned_footman_id: partner_id,
       reason: 'forward',
       notes: 'Partner forwarded request to others'
     });
@@ -670,7 +670,7 @@ exports.emitPartnerLocation = async (req, res) => {
     // Also notify specific customer if request_id is provided
     if (request_id) {
       const request = await Request.findOne({
-        where: { id: request_id, footman_id: partner_id },
+        where: { id: request_id, assigned_footman_id: partner_id },
         attributes: ['customer_id']
       });
 
@@ -730,7 +730,7 @@ exports.updateRequestStatus = async (req, res) => {
     const { request_id, status, message } = req.body;
 
     const request = await Request.findOne({
-      where: { id: request_id, footman_id: partner_id },
+      where: { id: request_id, assigned_footman_id: partner_id },
       include: [
         {
           association: 'footman',
@@ -759,8 +759,8 @@ exports.updateRequestStatus = async (req, res) => {
     // If partner accepts, update the footman_id in request
     if (status === 'accepted_by_partner' && !request.footman_id) {
       await request.update({
-        footman_id: partner_id,
-        nearest_footman_id: partner_id
+        assigned_footman_id: partner_id,
+        nearest_assigned_footman_id: partner_id
       });
     }
 
@@ -857,7 +857,7 @@ exports.getRequestDetailsForPartner = async (req, res) => {
     const request = await Request.findOne({
       where: { 
         id, 
-        footman_id: partner_id 
+        assigned_footman_id: partner_id 
       },
       attributes: [
         'id', 'request_number', 'request_status', 'customer_id',
@@ -906,7 +906,7 @@ exports.getPartnerPaymentStatus = async (req, res) => {
     const request = await Request.findOne({
       where: { 
         id, 
-        footman_id: partner_id 
+        assigned_footman_id: partner_id 
       },
       attributes: [
         'id', 'request_number', 'request_status', 'payment_flow_state',
