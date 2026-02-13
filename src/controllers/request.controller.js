@@ -892,3 +892,51 @@ exports.getRequestDetailsForPartner = async (req, res) => {
     });
   }
 };
+
+/**
+ * 12. GET PAYMENT STATUS FOR PARTNER
+ * This allows partners to check if customer selected a payment method
+ * even when partner app was closed
+ */
+exports.getPartnerPaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner_id = req.user.id;
+
+    const request = await Request.findOne({
+      where: { 
+        id, 
+        footman_id: partner_id 
+      },
+      attributes: [
+        'id', 'request_number', 'request_status', 'payment_flow_state',
+        'customer_selected_payment', 'partner_confirmed_at', 'payment_lock',
+        'base_price', 'distance_km', 'completed_at', 'updated_at'
+      ]
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        customer_selected_payment: request.customer_selected_payment,
+        partner_confirmed_at: request.partner_confirmed_at,
+        payment_lock: request.payment_lock,
+        payment_flow_state: request.payment_flow_state
+      }
+    });
+
+  } catch (error) {
+    console.error('Get partner payment status error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};

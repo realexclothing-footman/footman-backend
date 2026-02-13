@@ -18,10 +18,13 @@ router.post('/:id/payment/select', authMiddleware, requestController.selectPayme
 router.get('/available/requests', authMiddleware, footmanController.getAvailableRequests);
 router.post('/:id/accept', authMiddleware, footmanController.acceptRequest);
 router.post('/:id/reject', authMiddleware, footmanController.rejectRequest);
-router.post('/:id/forward', authMiddleware, requestController.forwardRequest); // ADDED FORWARD ROUTE
+router.post('/:id/forward', authMiddleware, requestController.forwardRequest);
 router.get('/footman/active', authMiddleware, footmanController.getMyActiveRequests);
 router.put('/:id/status', authMiddleware, footmanController.updateRequestStatus);
 router.post('/:id/payment/confirm', authMiddleware, footmanController.confirmPaymentReceived);
+
+// ==================== PARTNER PAYMENT STATUS ROUTE ====================
+router.get('/:id/payment/partner-status', authMiddleware, requestController.getPartnerPaymentStatus);
 
 // ==================== WEBSOCKET & PARTNER DETAILS ====================
 router.post('/partner/location', authMiddleware, requestController.emitPartnerLocation);
