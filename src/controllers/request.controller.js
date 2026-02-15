@@ -10,6 +10,9 @@ const { Op } = require('sequelize');
 
 /**
  * 1. CREATE HELP REQUEST - BROADCAST TO ALL NEARBY PARTNERS
+ * IDEAL BEHAVIOR:
+ * - When app is FOREGROUND: WebSocket updates UI (no notification)
+ * - When app is BACKGROUND/CLOSED: Firebase sends notification
  */
 exports.createRequest = async (req, res) => {
   try {
@@ -72,7 +75,9 @@ exports.createRequest = async (req, res) => {
       timestamp: Date.now()
     });
 
-    // BROADCAST TO ALL NEARBY PARTNERS via WebSocket
+    // BROADCAST TO ALL NEARBY PARTNERS - IDEAL BEHAVIOR
+    // WebSocket for foreground apps (real-time UI updates)
+    // Firebase for background/closed apps (push notifications)
     const broadcastData = {
       requestId: request.id,
       customerId: customer_id,
@@ -82,14 +87,14 @@ exports.createRequest = async (req, res) => {
       timestamp: Date.now()
     };
 
-    // Send to each nearby footman via WebSocket
+    // Send to each nearby footman
     const notifiedPartners = [];
     for (const footman of nearbyFootmen) {
       try {
-        // WebSocket notification
-        const wsNotified = socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
+        // WebSocket notification (for foreground apps - real-time UI update)
+        socketService.notifyPartner(footman.id.toString(), 'new_request', broadcastData);
         
-        // Firebase push notification
+        // Firebase push notification (for background/closed apps)
         await firebaseService.sendNotificationToUser(
           footman.id,
           firebaseService.NotificationTemplates.newRequest(
@@ -106,15 +111,14 @@ exports.createRequest = async (req, res) => {
           }
         );
         
-        if (wsNotified) {
-          notifiedPartners.push({
-            id: footman.id,
-            name: footman.full_name,
-            distance: footman.distance_km,
-            wsConnected: true
-          });
-          console.log(`📤 Notification sent to partner ${footman.id} (${footman.full_name})`);
-        }
+        notifiedPartners.push({
+          id: footman.id,
+          name: footman.full_name,
+          distance: footman.distance_km
+        });
+        
+        console.log(`📢 Notified partner ${footman.id} (${footman.full_name}) - WebSocket + Firebase`);
+        
       } catch (error) {
         console.error(`❌ Failed to notify partner ${footman.id}:`, error.message);
       }
