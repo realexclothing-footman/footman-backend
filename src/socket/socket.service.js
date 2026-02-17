@@ -85,9 +85,9 @@ class SocketService {
             this.sendNearbyFootmenToCustomer(socket, latitude, longitude);
           }
 
-          // If partner connects, broadcast to nearby customers that they are online
+          // If partner connects, just log it - they'll send location_update
           if (userType === 'partner') {
-            this.broadcastPartnerOnline(uid);
+            console.log(`Partner ${uid} connected - waiting for location`);
           }
 
           socket.emit('authenticated', { success: true });
