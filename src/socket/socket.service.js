@@ -34,11 +34,31 @@ class SocketService {
 
   setupEventHandlers() {
     this.io.on('connection', (socket) => {
+      console.log(`🔌 New socket connection: ${socket.id}`);
+
       // ---------------- AUTH ----------------
       socket.on('authenticate', async (data) => {
         try {
           const { userId, userType } = data || {};
-          if (!userId || !userType) return;
+          
+          // Validate userId and userType
+          if (!userId || !userType) {
+            console.log(`❌ Authentication failed: Missing userId or userType from socket ${socket.id}`);
+            socket.emit('auth_error', { 
+              success: false, 
+              message: 'Missing userId or userType' 
+            });
+            return;
+          }
+
+          if (userId === 'null' || userId === 'undefined') {
+            console.log(`❌ Authentication failed: Invalid userId string "${userId}" from socket ${socket.id}`);
+            socket.emit('auth_error', { 
+              success: false, 
+              message: 'Invalid userId format' 
+            });
+            return;
+          }
 
           const uid = userId.toString();
 
@@ -69,13 +89,17 @@ class SocketService {
           }
 
           socket.emit('authenticated', { success: true });
-          console.log(`✅ ${userType.toUpperCase()} ${uid} connected`);
+          console.log(`✅ ${userType.toUpperCase()} ${uid} connected from socket ${socket.id}`);
 
           if (userType === 'customer') {
             await this.sendPendingUpdatesToCustomer(uid, socket);
           }
         } catch (err) {
           console.error('❌ Socket authenticate error:', err);
+          socket.emit('auth_error', { 
+            success: false, 
+            message: 'Server error during authentication' 
+          });
         }
       });
 
@@ -83,7 +107,21 @@ class SocketService {
       socket.on('partner_location_update', async (data) => {
         try {
           const { partnerId, latitude, longitude, bearing, speed, id, status } = data || {};
-          if (!partnerId || latitude == null || longitude == null) return;
+          
+          if (!partnerId) {
+            console.log(`❌ partner_location_update: Missing partnerId from socket ${socket.id}`);
+            return;
+          }
+
+          if (partnerId === 'null' || partnerId === 'undefined') {
+            console.log(`❌ partner_location_update: Invalid partnerId "${partnerId}" from socket ${socket.id}`);
+            return;
+          }
+
+          if (latitude == null || longitude == null) {
+            console.log(`❌ partner_location_update: Missing location data from partner ${partnerId}`);
+            return;
+          }
 
           const pId = partnerId.toString();
           const requestId = id ? id.toString() : null;
@@ -98,6 +136,8 @@ class SocketService {
             status: status || 'available',
             lastUpdate: Date.now()
           });
+
+          console.log(`📍 Location update from partner ${pId}`);
 
           // Broadcast location to all customers if partner is available
           if (status !== 'busy') {
@@ -518,7 +558,9 @@ class SocketService {
           
           this.socketIndex.delete(socket.id);
           this.activeConnections.delete(userId);
-          console.log(`🔌 ${userType.toUpperCase()} ${userId} disconnected`);
+          console.log(`🔌 ${userType.toUpperCase()} ${userId} disconnected from socket ${socket.id}`);
+        } else {
+          console.log(`🔌 Unknown socket disconnected: ${socket.id}`);
         }
       });
     });
@@ -547,18 +589,19 @@ class SocketService {
       });
     });
 
+    console.log(`📋 Sending ${onlineFootmenList.length} online footmen to customer`);
+
     socket.emit('initial_footmen', {
       footmen: onlineFootmenList,
       timestamp: Date.now()
     });
-
-    console.log(`📋 Sent ${onlineFootmenList.length} online footmen to customer`);
   }
 
   // Broadcast to all customers that a partner is online
   broadcastPartnerOnline(partnerId) {
     const partnerInfo = this.onlineFootmen.get(partnerId);
     if (partnerInfo) {
+      console.log(`📢 Broadcasting partner online: ${partnerId}`);
       this.io.to('customers').emit('footman_online', {
         partnerId: partnerId,
         latitude: partnerInfo.latitude,
