@@ -6,7 +6,7 @@ class SocketService {
   constructor() {
     this.io = null;
 
-    // userId -> { socketId, userType }
+    // userId -> { socketId, userType, latitude, longitude, bearing, status }
     this.activeConnections = new Map();
 
     // socketId -> { userId, userType }
@@ -14,6 +14,9 @@ class SocketService {
 
     // requestId -> { customerId, partnerId }
     this.requestIndex = new Map();
+
+    // Store all online footmen with their locations
+    this.onlineFootmen = new Map(); // partnerId -> { latitude, longitude, bearing, status }
   }
 
   initialize(server) {
@@ -39,7 +42,12 @@ class SocketService {
 
           const uid = userId.toString();
 
-          this.activeConnections.set(uid, { socketId: socket.id, userType });
+          // Store connection
+          this.activeConnections.set(uid, { 
+            socketId: socket.id, 
+            userType,
+            connectedAt: Date.now()
+          });
           this.socketIndex.set(socket.id, { userId: uid, userType });
 
           // Join user-specific room
@@ -48,6 +56,16 @@ class SocketService {
           // Join admin room if admin
           if (userType === 'admin') {
             socket.join('admin_room');
+          }
+
+          // If customer connects, send them list of all online footmen
+          if (userType === 'customer') {
+            this.sendOnlineFootmenToCustomer(socket);
+          }
+
+          // If partner connects, broadcast to all customers that they are online
+          if (userType === 'partner') {
+            this.broadcastPartnerOnline(uid);
           }
 
           socket.emit('authenticated', { success: true });
@@ -61,8 +79,107 @@ class SocketService {
         }
       });
 
+      // ---------------- PARTNER LOCATION UPDATE ----------------
+      socket.on('partner_location_update', async (data) => {
+        try {
+          const { partnerId, latitude, longitude, bearing, speed, id, status } = data || {};
+          if (!partnerId || latitude == null || longitude == null) return;
+
+          const pId = partnerId.toString();
+          const requestId = id ? id.toString() : null;
+
+          // Store partner's latest location
+          const partnerInfo = this.onlineFootmen.get(pId) || {};
+          this.onlineFootmen.set(pId, {
+            latitude,
+            longitude,
+            bearing: bearing || 0,
+            speed: speed || 0,
+            status: status || 'available',
+            lastUpdate: Date.now()
+          });
+
+          // Broadcast location to all customers if partner is available
+          if (status !== 'busy') {
+            const locationData = {
+              type: 'partner_location',
+              partnerId: pId,
+              latitude,
+              longitude,
+              bearing: bearing || 0,
+              speed: speed || 0,
+              status: status || 'available',
+              timestamp: Date.now(),
+            };
+            
+            // Broadcast to all customers
+            this.io.to('customers').emit('partner_location', locationData);
+          }
+
+          // Also send to specific request room if part of active request
+          if (requestId) {
+            const locationData = {
+              partnerId: pId,
+              latitude,
+              longitude,
+              bearing: bearing || 0,
+              speed: speed || 0,
+              requestId,
+              timestamp: Date.now(),
+            };
+
+            this.io.to(`request_${requestId}`).emit('partner_location', locationData);
+
+            const cached = this.requestIndex.get(requestId);
+            if (cached?.customerId) {
+              this.notifyCustomer(cached.customerId, 'partner_location', locationData);
+            } else {
+              const req = await Request.findOne({
+                where: { id: requestId },
+                attributes: ['customer_id', 'assigned_footman_id'],
+              });
+              if (req?.customer_id) {
+                const cId = req.customer_id.toString();
+                this.requestIndex.set(requestId, {
+                  customerId: cId,
+                  partnerId: req?.assigned_footman_id ? req.assigned_footman_id.toString() : pId,
+                });
+                this.notifyCustomer(cId, 'partner_location', locationData);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error in partner_location_update:', error);
+        }
+      });
+
+      // ---------------- PARTNER STATUS UPDATE ----------------
+      socket.on('partner_status_update', async (data) => {
+        try {
+          const { partnerId, status } = data || {};
+          if (!partnerId) return;
+
+          const pId = partnerId.toString();
+          
+          // Update partner status
+          const partnerInfo = this.onlineFootmen.get(pId) || {};
+          partnerInfo.status = status;
+          this.onlineFootmen.set(pId, partnerInfo);
+
+          // Broadcast status change to all customers
+          this.io.to('customers').emit('partner_status_changed', {
+            partnerId: pId,
+            status: status,
+            timestamp: Date.now()
+          });
+
+          console.log(`🔄 Partner ${pId} status changed to ${status}`);
+        } catch (error) {
+          console.error('❌ Error in partner_status_update:', error);
+        }
+      });
+
       // ---------------- PARTNER ENTERPRISE EVENTS ----------------
-      // Profile update event (triggered by admin or partner)
       socket.on('partner_profile_updated', async (data) => {
         try {
           const { partner_id, profile_image_url, updated_at } = data || {};
@@ -70,7 +187,6 @@ class SocketService {
           
           const partnerId = partner_id.toString();
           
-          // Notify the partner
           this.notifyPartner(partnerId, 'profile_updated', {
             partner_id: partnerId,
             profile_image_url: profile_image_url,
@@ -83,7 +199,6 @@ class SocketService {
         }
       });
 
-      // Wallet update event (when earnings change)
       socket.on('partner_wallet_updated', async (data) => {
         try {
           const { partner_id, amount, type, new_balance } = data || {};
@@ -105,7 +220,6 @@ class SocketService {
         }
       });
 
-      // Verification update event (triggered by admin)
       socket.on('partner_verification_updated', async (data) => {
         try {
           const { partner_id, verification_type, status } = data || {};
@@ -120,7 +234,6 @@ class SocketService {
             timestamp: new Date()
           });
           
-          // Also notify admins
           this.io.to('admin_room').emit('verification_status_changed', {
             partner_id: partnerId,
             verification_type: verification_type,
@@ -135,7 +248,6 @@ class SocketService {
         }
       });
 
-      // Partner status changed (by admin - like block/unblock)
       socket.on('partner_status_changed', async (data) => {
         try {
           const { partner_id, status_type, new_status, reason } = data || {};
@@ -166,17 +278,13 @@ class SocketService {
 
           const requestId = id.toString();
 
-          // Resolve customerId (payload -> cache -> DB)
           let targetCustomerId = customerId ? customerId.toString() : null;
+          let targetPartnerId = partnerId ? partnerId.toString() : null;
 
           const cached = this.requestIndex.get(requestId);
           if (!targetCustomerId && cached?.customerId) targetCustomerId = cached.customerId;
-
-          // Resolve partnerId (payload -> cache -> DB)
-          let targetPartnerId = partnerId ? partnerId.toString() : null;
           if (!targetPartnerId && cached?.partnerId) targetPartnerId = cached.partnerId;
 
-          // Pull DB once (also to get partner name/phone for instant UI)
           let partnerName = null;
           let partnerPhone = null;
 
@@ -194,19 +302,16 @@ class SocketService {
 
             if (!targetCustomerId && req?.customer_id) targetCustomerId = req.customer_id.toString();
 
-            // partner id from include OR assigned_footman_id
             if (!targetPartnerId) {
               if (req?.footman?.id) targetPartnerId = req.footman.id.toString();
               else if (req?.assigned_footman_id) targetPartnerId = req.assigned_footman_id.toString();
             }
 
-            // name/phone (only if available)
             if (req?.footman) {
               partnerName = req.footman.full_name || null;
               partnerPhone = req.footman.phone || null;
             }
 
-            // warm cache
             this.requestIndex.set(requestId, {
               customerId: targetCustomerId || cached?.customerId || null,
               partnerId: targetPartnerId || cached?.partnerId || null,
@@ -218,7 +323,39 @@ class SocketService {
             return;
           }
 
-          // For searching states, we intentionally clear partner info
+          // Update partner status based on request status
+          if (targetPartnerId) {
+            if (status === 'accepted_by_partner' || status === 'ongoing') {
+              // Partner is busy
+              const partnerInfo = this.onlineFootmen.get(targetPartnerId);
+              if (partnerInfo) {
+                partnerInfo.status = 'busy';
+                this.onlineFootmen.set(targetPartnerId, partnerInfo);
+                
+                // Notify customers that partner is now busy
+                this.io.to('customers').emit('partner_status_changed', {
+                  partnerId: targetPartnerId,
+                  status: 'busy',
+                  timestamp: Date.now()
+                });
+              }
+            } else if (status === 'completed' || status === 'cancelled') {
+              // Partner becomes available again
+              const partnerInfo = this.onlineFootmen.get(targetPartnerId);
+              if (partnerInfo) {
+                partnerInfo.status = 'available';
+                this.onlineFootmen.set(targetPartnerId, partnerInfo);
+                
+                // Notify customers that partner is available again
+                this.io.to('customers').emit('partner_status_changed', {
+                  partnerId: targetPartnerId,
+                  status: 'available',
+                  timestamp: Date.now()
+                });
+              }
+            }
+          }
+
           const searchingStates = new Set(['searching', 'searching_after_forward']);
           const shouldClearPartner = searchingStates.has(status);
 
@@ -231,10 +368,7 @@ class SocketService {
             timestamp: Date.now(),
           };
 
-          // customer app listens: 'request_update'
           this.notifyCustomer(targetCustomerId, 'request_update', payload);
-
-          // request room (if joined)
           this.io.to(`request_${requestId}`).emit('request_update', payload);
 
           console.log(`📋 Status forwarded: ${status} req=${requestId} -> customer=${targetCustomerId}`);
@@ -285,51 +419,6 @@ class SocketService {
         }
       });
 
-      // ---------------- PARTNER LOCATION ----------------
-      socket.on('partner_location_update', async (data) => {
-        try {
-          const { partnerId, latitude, longitude, bearing, speed, id } = data || {};
-          if (!partnerId || latitude == null || longitude == null) return;
-
-          const pId = partnerId.toString();
-          const requestId = id ? id.toString() : null;
-
-          if (requestId) {
-            const locationData = {
-              partnerId: pId,
-              latitude,
-              longitude,
-              bearing: bearing || 0,
-              speed: speed || 0,
-              requestId,
-              timestamp: Date.now(),
-            };
-
-            this.io.to(`request_${requestId}`).emit('partner_location', locationData);
-
-            const cached = this.requestIndex.get(requestId);
-            if (cached?.customerId) {
-              this.notifyCustomer(cached.customerId, 'partner_location', locationData);
-            } else {
-              const req = await Request.findOne({
-                where: { id: requestId },
-                attributes: ['customer_id', 'assigned_footman_id'],
-              });
-              if (req?.customer_id) {
-                const cId = req.customer_id.toString();
-                this.requestIndex.set(requestId, {
-                  customerId: cId,
-                  partnerId: req?.assigned_footman_id ? req.assigned_footman_id.toString() : pId,
-                });
-                this.notifyCustomer(cId, 'partner_location', locationData);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error in partner_location_update:', error);
-        }
-      });
-
       // ---------------- PAYMENT SELECTION ----------------
       socket.on('payment_update', async (data) => {
         try {
@@ -360,7 +449,6 @@ class SocketService {
             timestamp: Date.now(),
           };
 
-          // both apps listen: 'payment_selected'
           if (status === 'selected') {
             if (cached?.customerId) this.notifyCustomer(cached.customerId, 'payment_selected', payload);
             if (cached?.partnerId) this.notifyPartner(cached.partnerId, 'payment_selected', payload);
@@ -418,15 +506,71 @@ class SocketService {
         const info = this.socketIndex.get(socket.id);
         if (info) {
           const { userId, userType } = info;
+          
+          // If partner disconnects, remove from online footmen and notify customers
+          if (userType === 'partner') {
+            this.onlineFootmen.delete(userId);
+            this.io.to('customers').emit('footman_offline', {
+              partnerId: userId,
+              timestamp: Date.now()
+            });
+          }
+          
           this.socketIndex.delete(socket.id);
           this.activeConnections.delete(userId);
           console.log(`🔌 ${userType.toUpperCase()} ${userId} disconnected`);
         }
       });
     });
+
+    // Create a room for all customers
+    this.io.on('connection', (socket) => {
+      socket.on('authenticate', (data) => {
+        if (data?.userType === 'customer') {
+          socket.join('customers');
+        }
+      });
+    });
   }
 
-  // When customer reconnects, push active request states (no polling needed)
+  // Send list of all online footmen to a newly connected customer
+  sendOnlineFootmenToCustomer(socket) {
+    const onlineFootmenList = [];
+    
+    this.onlineFootmen.forEach((data, partnerId) => {
+      onlineFootmenList.push({
+        id: partnerId,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        bearing: data.bearing || 0,
+        status: data.status || 'available'
+      });
+    });
+
+    socket.emit('initial_footmen', {
+      footmen: onlineFootmenList,
+      timestamp: Date.now()
+    });
+
+    console.log(`📋 Sent ${onlineFootmenList.length} online footmen to customer`);
+  }
+
+  // Broadcast to all customers that a partner is online
+  broadcastPartnerOnline(partnerId) {
+    const partnerInfo = this.onlineFootmen.get(partnerId);
+    if (partnerInfo) {
+      this.io.to('customers').emit('footman_online', {
+        partnerId: partnerId,
+        latitude: partnerInfo.latitude,
+        longitude: partnerInfo.longitude,
+        bearing: partnerInfo.bearing || 0,
+        status: partnerInfo.status || 'available',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  // When customer reconnects, push active request states
   async sendPendingUpdatesToCustomer(customerId, socket) {
     try {
       const activeRequests = await Request.findAll({
