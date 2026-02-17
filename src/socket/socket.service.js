@@ -39,7 +39,7 @@ class SocketService {
       // ---------------- AUTH ----------------
       socket.on('authenticate', async (data) => {
         try {
-          const { userId, userType } = data || {};
+          const { userId, userType, latitude, longitude } = data || {};
           
           // Validate userId and userType
           if (!userId || !userType) {
@@ -62,10 +62,12 @@ class SocketService {
 
           const uid = userId.toString();
 
-          // Store connection
+          // Store connection with location if provided (for customers)
           this.activeConnections.set(uid, { 
             socketId: socket.id, 
             userType,
+            latitude: latitude || null,
+            longitude: longitude || null,
             connectedAt: Date.now()
           });
           this.socketIndex.set(socket.id, { userId: uid, userType });
@@ -78,12 +80,12 @@ class SocketService {
             socket.join('admin_room');
           }
 
-          // If customer connects, send them list of all online footmen
-          if (userType === 'customer') {
-            this.sendOnlineFootmenToCustomer(socket);
+          // If customer connects, send them list of nearby footmen (within 1KM)
+          if (userType === 'customer' && latitude && longitude) {
+            this.sendNearbyFootmenToCustomer(socket, latitude, longitude);
           }
 
-          // If partner connects, broadcast to all customers that they are online
+          // If partner connects, broadcast to nearby customers that they are online
           if (userType === 'partner') {
             this.broadcastPartnerOnline(uid);
           }
@@ -139,7 +141,7 @@ class SocketService {
 
           console.log(`📍 Location update from partner ${pId}`);
 
-          // Broadcast location to all customers if partner is available
+          // Broadcast location to nearby customers only
           if (status !== 'busy') {
             const locationData = {
               type: 'partner_location',
@@ -152,8 +154,8 @@ class SocketService {
               timestamp: Date.now(),
             };
             
-            // Broadcast to all customers
-            this.io.to('customers').emit('partner_location', locationData);
+            // Send to customers within 1KM
+            this.sendToNearbyCustomers(pId, latitude, longitude, 'partner_location', locationData);
           }
 
           // Also send to specific request room if part of active request
@@ -193,6 +195,32 @@ class SocketService {
         }
       });
 
+      // ---------------- CUSTOMER LOCATION UPDATE ----------------
+      socket.on('customer_location_update', async (data) => {
+        try {
+          const { customerId, latitude, longitude } = data || {};
+          
+          if (!customerId) return;
+          
+          const cId = customerId.toString();
+          
+          // Update customer location in active connections
+          const customerInfo = this.activeConnections.get(cId);
+          if (customerInfo) {
+            customerInfo.latitude = latitude;
+            customerInfo.longitude = longitude;
+            this.activeConnections.set(cId, customerInfo);
+          }
+          
+          // Send updated nearby footmen to this customer
+          if (latitude && longitude) {
+            this.sendNearbyFootmenToCustomerById(cId, latitude, longitude);
+          }
+        } catch (error) {
+          console.error('❌ Error in customer_location_update:', error);
+        }
+      });
+
       // ---------------- PARTNER STATUS UPDATE ----------------
       socket.on('partner_status_update', async (data) => {
         try {
@@ -206,12 +234,14 @@ class SocketService {
           partnerInfo.status = status;
           this.onlineFootmen.set(pId, partnerInfo);
 
-          // Broadcast status change to all customers
-          this.io.to('customers').emit('partner_status_changed', {
-            partnerId: pId,
-            status: status,
-            timestamp: Date.now()
-          });
+          // Broadcast status change to nearby customers
+          if (partnerInfo.latitude && partnerInfo.longitude) {
+            this.sendToNearbyCustomers(pId, partnerInfo.latitude, partnerInfo.longitude, 'partner_status_changed', {
+              partnerId: pId,
+              status: status,
+              timestamp: Date.now()
+            });
+          }
 
           console.log(`🔄 Partner ${pId} status changed to ${status}`);
         } catch (error) {
@@ -372,12 +402,14 @@ class SocketService {
                 partnerInfo.status = 'busy';
                 this.onlineFootmen.set(targetPartnerId, partnerInfo);
                 
-                // Notify customers that partner is now busy
-                this.io.to('customers').emit('partner_status_changed', {
-                  partnerId: targetPartnerId,
-                  status: 'busy',
-                  timestamp: Date.now()
-                });
+                // Notify nearby customers that partner is now busy
+                if (partnerInfo.latitude && partnerInfo.longitude) {
+                  this.sendToNearbyCustomers(targetPartnerId, partnerInfo.latitude, partnerInfo.longitude, 'partner_status_changed', {
+                    partnerId: targetPartnerId,
+                    status: 'busy',
+                    timestamp: Date.now()
+                  });
+                }
               }
             } else if (status === 'completed' || status === 'cancelled') {
               // Partner becomes available again
@@ -386,12 +418,14 @@ class SocketService {
                 partnerInfo.status = 'available';
                 this.onlineFootmen.set(targetPartnerId, partnerInfo);
                 
-                // Notify customers that partner is available again
-                this.io.to('customers').emit('partner_status_changed', {
-                  partnerId: targetPartnerId,
-                  status: 'available',
-                  timestamp: Date.now()
-                });
+                // Notify nearby customers that partner is available again
+                if (partnerInfo.latitude && partnerInfo.longitude) {
+                  this.sendToNearbyCustomers(targetPartnerId, partnerInfo.latitude, partnerInfo.longitude, 'partner_status_changed', {
+                    partnerId: targetPartnerId,
+                    status: 'available',
+                    timestamp: Date.now()
+                  });
+                }
               }
             }
           }
@@ -547,13 +581,16 @@ class SocketService {
         if (info) {
           const { userId, userType } = info;
           
-          // If partner disconnects, remove from online footmen and notify customers
+          // If partner disconnects, remove from online footmen and notify nearby customers
           if (userType === 'partner') {
+            const partnerInfo = this.onlineFootmen.get(userId);
+            if (partnerInfo && partnerInfo.latitude && partnerInfo.longitude) {
+              this.sendToNearbyCustomers(userId, partnerInfo.latitude, partnerInfo.longitude, 'footman_offline', {
+                partnerId: userId,
+                timestamp: Date.now()
+              });
+            }
             this.onlineFootmen.delete(userId);
-            this.io.to('customers').emit('footman_offline', {
-              partnerId: userId,
-              timestamp: Date.now()
-            });
           }
           
           this.socketIndex.delete(socket.id);
@@ -565,7 +602,7 @@ class SocketService {
       });
     });
 
-    // Create a room for all customers
+    // Create a room for all customers (for broadcasting to all)
     this.io.on('connection', (socket) => {
       socket.on('authenticate', (data) => {
         if (data?.userType === 'customer') {
@@ -575,42 +612,104 @@ class SocketService {
     });
   }
 
-  // Send list of all online footmen to a newly connected customer
-  sendOnlineFootmenToCustomer(socket) {
-    const onlineFootmenList = [];
+  // Calculate distance between two coordinates in KM using Haversine formula
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius of the earth in km
+    const dLat = this.deg2rad(lat2 - lat1);
+    const dLon = this.deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(this.deg2rad(lat1)) * Math.cos(this.deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2); 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const distance = R * c; // Distance in km
+    return distance;
+  }
+
+  deg2rad(deg) {
+    return deg * (Math.PI/180);
+  }
+
+  // Send message to all customers within 1KM of a partner
+  sendToNearbyCustomers(partnerId, partnerLat, partnerLng, event, data) {
+    const customers = [];
+    
+    // Find all customers within 1KM
+    this.activeConnections.forEach((conn, userId) => {
+      if (conn.userType === 'customer' && conn.latitude && conn.longitude) {
+        const distance = this.calculateDistance(
+          partnerLat, partnerLng,
+          conn.latitude, conn.longitude
+        );
+        
+        if (distance <= 1.0) { // Within 1KM
+          customers.push(userId);
+          this.notifyCustomer(userId, event, data);
+        }
+      }
+    });
+    
+    if (customers.length > 0) {
+      console.log(`📢 ${event} sent to ${customers.length} nearby customers from partner ${partnerId}`);
+    }
+  }
+
+  // Send list of nearby footmen to a customer (within 1KM)
+  sendNearbyFootmenToCustomer(socket, customerLat, customerLng) {
+    const nearbyFootmen = [];
     
     this.onlineFootmen.forEach((data, partnerId) => {
-      onlineFootmenList.push({
-        id: partnerId,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        bearing: data.bearing || 0,
-        status: data.status || 'available'
-      });
+      const distance = this.calculateDistance(
+        customerLat, customerLng,
+        data.latitude, data.longitude
+      );
+      
+      if (distance <= 1.0) { // Within 1KM
+        nearbyFootmen.push({
+          id: partnerId,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          bearing: data.bearing || 0,
+          status: data.status || 'available'
+        });
+      }
     });
 
-    console.log(`📋 Sending ${onlineFootmenList.length} online footmen to customer`);
+    console.log(`📋 Sending ${nearbyFootmen.length} nearby footmen to customer`);
 
     socket.emit('initial_footmen', {
-      footmen: onlineFootmenList,
+      footmen: nearbyFootmen,
       timestamp: Date.now()
     });
   }
 
-  // Broadcast to all customers that a partner is online
-  broadcastPartnerOnline(partnerId) {
-    const partnerInfo = this.onlineFootmen.get(partnerId);
-    if (partnerInfo) {
-      console.log(`📢 Broadcasting partner online: ${partnerId}`);
-      this.io.to('customers').emit('footman_online', {
-        partnerId: partnerId,
-        latitude: partnerInfo.latitude,
-        longitude: partnerInfo.longitude,
-        bearing: partnerInfo.bearing || 0,
-        status: partnerInfo.status || 'available',
-        timestamp: Date.now()
-      });
-    }
+  // Send list of nearby footmen to a customer by ID
+  sendNearbyFootmenToCustomerById(customerId, customerLat, customerLng) {
+    const nearbyFootmen = [];
+    
+    this.onlineFootmen.forEach((data, partnerId) => {
+      const distance = this.calculateDistance(
+        customerLat, customerLng,
+        data.latitude, data.longitude
+      );
+      
+      if (distance <= 1.0) { // Within 1KM
+        nearbyFootmen.push({
+          id: partnerId,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          bearing: data.bearing || 0,
+          status: data.status || 'available'
+        });
+      }
+    });
+
+    console.log(`📋 Updating customer ${customerId} with ${nearbyFootmen.length} nearby footmen`);
+
+    this.notifyCustomer(customerId, 'nearby_footmen_update', {
+      footmen: nearbyFootmen,
+      timestamp: Date.now()
+    });
   }
 
   // When customer reconnects, push active request states
