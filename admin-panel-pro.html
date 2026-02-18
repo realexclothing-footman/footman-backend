@@ -59,8 +59,8 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #f1f5f9;
-            color: var(--dark);
+            background: var(--bg-main);
+            color: var(--text-primary);
             line-height: 1.6;
             overflow-x: hidden;
         }
@@ -214,7 +214,7 @@
             background: none;
             border: none;
             font-size: 20px;
-            color: var(--dark);
+            color: var(--text-primary);
             cursor: pointer;
             padding: 8px;
             border-radius: 6px;
@@ -227,7 +227,7 @@
         .page-title {
             font-size: 24px;
             font-weight: 700;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .topbar-right {
@@ -290,7 +290,7 @@
         }
 
         .page-subtitle {
-            color: var(--secondary);
+            color: var(--text-secondary);
             font-size: 16px;
             margin-top: 8px;
         }
@@ -332,7 +332,7 @@
 
         .stat-content h3 {
             font-size: 14px;
-            color: var(--secondary);
+            color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 8px;
@@ -341,7 +341,7 @@
         .stat-value {
             font-size: 36px;
             font-weight: 800;
-            color: var(--dark);
+            color: var(--text-primary);
             margin-bottom: 8px;
             line-height: 1;
         }
@@ -383,7 +383,7 @@
         .chart-title {
             font-size: 18px;
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .chart-container {
@@ -406,7 +406,7 @@
         .section-title {
             font-size: 20px;
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .section-actions {
@@ -432,7 +432,7 @@
         .card-title {
             font-size: 18px;
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .card-tools {
@@ -466,7 +466,7 @@
             left: 12px;
             top: 50%;
             transform: translateY(-50%);
-            color: var(--secondary);
+            color: var(--text-secondary);
         }
 
         .filter-select {
@@ -475,7 +475,7 @@
             border-radius: var(--radius);
             background: var(--card-bg);
             font-size: 14px;
-            color: var(--dark);
+            color: var(--text-primary);
             cursor: pointer;
             min-width: 150px;
         }
@@ -496,7 +496,7 @@
             padding: 18px 24px;
             text-align: left;
             font-weight: 600;
-            color: var(--secondary);
+            color: var(--text-secondary);
             border-bottom: 1px solid var(--border);
             font-size: 14px;
             text-transform: uppercase;
@@ -541,7 +541,7 @@
         .status-rejected { background: #fee2e2; color: #991b1b; }
         .status-inactive { background: #fee2e2; color: #991b1b; }
         .status-online { background: #d1fae5; color: #065f46; }
-        .status-offline { background: #f1f5f9; color: #64748b; }
+        .status-offline { background: var(--bg-main); color: #64748b; }
         .status-completed { background: #dbeafe; color: #1e40af; }
         .status-ongoing { background: #f3e8ff; color: #6b21a8; }
 
@@ -589,13 +589,13 @@
 
         .user-name {
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
             margin-bottom: 2px;
         }
 
         .user-email {
             font-size: 12px;
-            color: var(--secondary);
+            color: var(--text-secondary);
         }
 
         /* ========== BUTTONS ========== */
@@ -659,7 +659,7 @@
         .btn-outline {
             background: transparent;
             border: 2px solid var(--border);
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .btn-outline:hover {
@@ -738,12 +738,12 @@
         .login-title {
             font-size: 28px;
             font-weight: 700;
-            color: var(--dark);
+            color: var(--text-primary);
             margin-bottom: 8px;
         }
 
         .login-subtitle {
-            color: var(--secondary);
+            color: var(--text-secondary);
             font-size: 14px;
         }
 
@@ -755,7 +755,7 @@
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .form-control {
@@ -850,14 +850,14 @@
         .modal-title {
             font-size: 24px;
             font-weight: 700;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .close-btn {
             background: none;
             border: none;
             font-size: 28px;
-            color: var(--secondary);
+            color: var(--text-secondary);
             cursor: pointer;
             padding: 4px;
             width: 40px;
@@ -906,7 +906,7 @@
 
         .detail-label {
             font-size: 12px;
-            color: var(--secondary);
+            color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 8px;
@@ -916,7 +916,7 @@
         .detail-value {
             font-size: 16px;
             font-weight: 600;
-            color: var(--dark);
+            color: var(--text-primary);
             line-height: 1.4;
         }
 
@@ -961,7 +961,7 @@
         .loading {
             text-align: center;
             padding: 60px 24px;
-            color: var(--secondary);
+            color: var(--text-secondary);
         }
 
         .loading-spinner {
@@ -982,7 +982,7 @@
         .empty-state {
             text-align: center;
             padding: 60px 24px;
-            color: var(--secondary);
+            color: var(--text-secondary);
         }
 
         .empty-icon {
@@ -995,7 +995,7 @@
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 8px;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         .empty-description {
@@ -1097,7 +1097,7 @@
             background: none;
             border: none;
             font-size: 20px;
-            color: var(--secondary);
+            color: var(--text-secondary);
             cursor: pointer;
             padding: 0 0 0 16px;
             opacity: 0.7;
@@ -1106,7 +1106,7 @@
 
         .toast-close:hover {
             opacity: 1;
-            color: var(--dark);
+            color: var(--text-primary);
         }
 
         /* ========== RESPONSIVE ========== */
@@ -1214,7 +1214,7 @@
         .text-success { color: var(--success); }
         .text-danger { color: var(--danger); }
         .text-warning { color: var(--warning); }
-        .text-muted { color: var(--secondary); }
+        .text-muted { color: var(--text-secondary); }
     </style>
 </head>
 <body data-theme="light">
@@ -1929,7 +1929,7 @@
                             <h3 class="section-title">Partner Locations Map</h3>
                         </div>
                         <div class="data-card">
-                            <div id="mapContainer" style="height: 500px; background: var(--light); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: var(--secondary);">
+                            <div id="mapContainer" style="height: 500px; background: var(--light); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: var(--text-secondary);">
                                 <div class="loading">
                                     <div class="loading-spinner"></div>
                                     <p>Loading map...</p>
@@ -2148,7 +2148,7 @@
                 <div class="form-group">
                     <label class="form-label">Rejection Reason <span style="color: var(--danger);">*</span></label>
                     <textarea id="rejectReasonInput" class="form-control" rows="4" placeholder="Enter detailed reason why this partner is being rejected..." style="resize: vertical;"></textarea>
-                    <small style="color: var(--secondary); margin-top: 8px; display: block;">
+                    <small style="color: var(--text-secondary); margin-top: 8px; display: block;">
                         This reason will be sent to the partner via push notification and stored in their record.
                     </small>
                 </div>
