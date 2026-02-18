@@ -11,7 +11,6 @@
     <style>
         /* ========== VARIABLES ========== */
         :root {
-            /* Light mode (default) */
             --primary: #10b981;
             --primary-dark: #059669;
             --secondary: #64748b;
@@ -34,6 +33,29 @@
             --transition: all 0.3s ease;
         }
 
+        /* Dark mode */
+        [data-theme="dark"] {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --secondary: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --light: #1e293b;
+            --dark: #f8fafc;
+            --sidebar: #0f172a;
+            --card-bg: #1e293b;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --bg-main: #0f172a;
+            --hover-bg: rgba(255, 255, 255, 0.05);
+            --radius: 12px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+            --transition: all 0.3s ease;
+        }
             --danger: #ef4444;
             --info: #3b82f6;
             --light: #1e293b;
@@ -236,6 +258,29 @@
             gap: 20px;
         }
 
+
+        .theme-toggle {
+            background: var(--hover-bg);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-primary);
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .theme-toggle i {
+            font-size: 18px;
+        }
         .user-menu {
 
         .theme-toggle {
@@ -548,7 +593,27 @@
         /* Dark mode badge adjustments */
         [data-theme="dark"] .status-active { background: #064e3b; color: #d1fae5; }
         [data-theme="dark"] .status-pending { background: #78350f; color: #fef3c7; }
+        [data-theme="dark"] .status-rejected { background: #7f1d1d; color: #fee2e2; }
+        [data-theme="dark"] .status-inactive { background: #334155; color: #f1f5f9; }
+        [data-theme="dark"] .status-online { background: #064e3b; color: #d1fae5; }
+        [data-theme="dark"] .status-offline { background: #334155; color: #f1f5f9; }
+        [data-theme="dark"] .status-completed { background: #1e3a8a; color: #dbeafe; }
+        [data-theme="dark"] .status-ongoing { background: #581c87; color: #f3e8ff; }
+
+        /* Dark mode badge adjustments */
+        [data-theme="dark"] .status-active { background: #064e3b; color: #d1fae5; }
+        [data-theme="dark"] .status-pending { background: #78350f; color: #fef3c7; }
         [data-theme="dark"] .status-inactive { background: #7f1d1d; color: #fee2e2; }
+        [data-theme="dark"] .status-online { background: #064e3b; color: #d1fae5; }
+        [data-theme="dark"] .status-offline { background: #334155; color: #f1f5f9; }
+        [data-theme="dark"] .status-completed { background: #1e3a8a; color: #dbeafe; }
+        [data-theme="dark"] .status-ongoing { background: #581c87; color: #f3e8ff; }
+
+        /* Dark mode badge adjustments */
+        [data-theme="dark"] .status-active { background: #064e3b; color: #d1fae5; }
+        [data-theme="dark"] .status-pending { background: #78350f; color: #fef3c7; }
+        [data-theme="dark"] .status-rejected { background: #7f1d1d; color: #fee2e2; }
+        [data-theme="dark"] .status-inactive { background: #334155; color: #f1f5f9; }
         [data-theme="dark"] .status-online { background: #064e3b; color: #d1fae5; }
         [data-theme="dark"] .status-offline { background: #334155; color: #f1f5f9; }
         [data-theme="dark"] .status-completed { background: #1e3a8a; color: #dbeafe; }
@@ -1348,6 +1413,10 @@
                 </div>
                 <div class="topbar-right">
                     <!-- Theme Toggle Button -->
+                    <div class="theme-toggle" id="themeToggle">
+                        <span id="themeIcon">☀️</span>
+                        <span id="themeText">Light</span>
+                    </div>                    <!-- Theme Toggle Button -->
                     <div class="theme-toggle" id="themeToggle">
                         <span id="themeIcon">☀️</span>
                         <span id="themeText">Light</span>
@@ -2172,11 +2241,70 @@
             TOKEN_KEY: 'footman_admin_token',
             USER_KEY: 'footman_admin_user',
             REFRESH_INTERVAL: 30000,
+            THEME_KEY: 'footman_admin_theme',
             ITEMS_PER_PAGE: 20,
             CUSTOM_MARKER_URL: 'https://footman-backend.onrender.com/public/images/markers/footman-marker.png' // Custom FOOTMAN marker
         };
 
         // ========== STATE MANAGEMENT ==========
+
+        // ========== THEME MANAGEMENT ==========
+        function initTheme() {
+            const savedTheme = localStorage.getItem(Config.THEME_KEY) || "light";
+            document.body.setAttribute("data-theme", savedTheme);
+            updateThemeUI(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute("data-theme");
+            const newTheme = currentTheme === "light" ? "dark" : "light";
+            
+            document.body.setAttribute("data-theme", newTheme);
+            localStorage.setItem(Config.THEME_KEY, newTheme);
+            updateThemeUI(newTheme);
+            
+            if (State.charts.revenue) {
+                updateChartsTheme();
+            }
+            if (State.charts.requests) {
+                updateChartsTheme();
+            }
+        }
+
+        function updateThemeUI(theme) {
+            const themeIcon = document.getElementById("themeIcon");
+            const themeText = document.getElementById("themeText");
+            
+            if (theme === "dark") {
+                themeIcon.textContent = "🌙";
+                themeText.textContent = "Dark";
+            } else {
+                themeIcon.textContent = "☀️";
+                themeText.textContent = "Light";
+            }
+        }
+
+        function updateChartsTheme() {
+            if (!State.charts.revenue && !State.charts.requests) return;
+            
+            const isDark = document.body.getAttribute("data-theme") === "dark";
+            const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.05)";
+            
+            if (State.charts.revenue) {
+                State.charts.revenue.options.scales.y.ticks.color = isDark ? "#94a3b8" : "#64748b";
+                State.charts.revenue.options.scales.x.ticks.color = isDark ? "#94a3b8" : "#64748b";
+                State.charts.revenue.options.scales.y.grid.color = gridColor;
+                State.charts.revenue.options.scales.x.grid.color = gridColor;
+                State.charts.revenue.options.plugins.legend.labels.color = isDark ? "#f1f5f9" : "#1e293b";
+                State.charts.revenue.update();
+            }
+            
+            if (State.charts.requests) {
+                State.charts.requests.options.plugins.legend.labels.color = isDark ? "#f1f5f9" : "#1e293b";
+                State.charts.requests.data.datasets[0].borderColor = isDark ? "#1e293b" : "#ffffff";
+                State.charts.requests.update();
+            }
+        }
 
         // ========== THEME MANAGEMENT ==========
         function initTheme() {
@@ -2742,7 +2870,7 @@
             });
             
             document.getElementById('logoutBtn').addEventListener('click', logout);
-
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
             document.getElementById('themeToggle').addEventListener('click', toggleTheme);
             
             document.getElementById('loginBtn').addEventListener('click', () => {
@@ -4801,6 +4929,7 @@
 
         // ========== INITIALIZATION ==========
         function initApp() {
+            initTheme();
             initTheme();
             setupNavigation();
             updateAdminInfo();
