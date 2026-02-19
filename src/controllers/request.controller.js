@@ -944,3 +944,61 @@ exports.getPartnerPaymentStatus = async (req, res) => {
     });
   }
 };
+
+/**
+ * 13. SAVE TRAIL SCREENSHOT URL
+ * Called when customer app uploads trail screenshot to Cloudinary after job completion
+ */
+exports.saveTrailScreenshot = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { trail_image_url } = req.body;
+    const customer_id = req.user.id;
+
+    if (!trail_image_url) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trail image URL is required'
+      });
+    }
+
+    // Find request and verify it belongs to this customer
+    const request = await Request.findOne({
+      where: { 
+        id, 
+        customer_id 
+      }
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found or unauthorized'
+      });
+    }
+
+    // Save the trail image URL to the request
+    await request.update({
+      trail_image_url: trail_image_url,
+      updated_at: new Date()
+    });
+
+    console.log(`✅ Trail screenshot saved for request ${id}: ${trail_image_url}`);
+
+    res.json({
+      success: true,
+      message: 'Trail screenshot saved successfully',
+      data: {
+        request_id: request.id,
+        trail_image_url: trail_image_url
+      }
+    });
+
+  } catch (error) {
+    console.error('Save trail screenshot error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save trail screenshot'
+    });
+  }
+};

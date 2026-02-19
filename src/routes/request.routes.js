@@ -31,4 +31,7 @@ router.post('/partner/location', authMiddleware, requestController.emitPartnerLo
 router.post('/:id/status/ws', authMiddleware, requestController.updateRequestStatus);
 router.get('/partner/:id', authMiddleware, requestController.getRequestDetailsForPartner);
 
+// ==================== TRAIL SCREENSHOT ROUTE ====================
+router.post('/:id/trail-screenshot', authMiddleware, requestController.saveTrailScreenshot);
+
 module.exports = router;
